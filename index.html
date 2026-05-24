@@ -38,11 +38,12 @@
             will-change: transform;
         }
 
-        /* เพิ่ม Canvas สำหรับวาดเส้น Skeleton ทับวีดีโอ */
+        /* Canvas สำหรับวาดเส้น ตัดขอบให้พอดีกับวีดีโอกล้อง */
         #output_canvas {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 5; pointer-events: none; /* ไม่ให้กันการ Touch */
-            transform: scaleX(-1); /* กลับด้านให้ตรงกับวีดีโอกระจก */
+            z-index: 5; pointer-events: none; 
+            transform: scaleX(-1); 
+            object-fit: cover; 
         }
         
         #frame-overlay { 
@@ -67,6 +68,7 @@
         .instruction-item { text-align: center; font-size: 38px; }
         .icon { font-size: 64px; margin-bottom: 10px; display: block; }
 
+        /* Canvas ซ่อนไว้ใช้รวมภาพถ่าย */
         #canvas { display: none; }
 
         #result-screen {
@@ -93,8 +95,7 @@
 
     <div class="camera-container">
         <video id="webcam" autoplay playsinline></video>
-        <canvas id="output_canvas" width="960" height="1280"></canvas>
-        
+        <canvas id="output_canvas"></canvas>
         <img id="frame-overlay" src="frame1.png" alt="Frame Overlay">
         <div id="capture-countdown">5</div>
     </div>
@@ -122,8 +123,6 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
-        
-        // นำเข้า DrawingUtils เพิ่มเข้ามาเพื่อใช้วาดเส้น
         import { GestureRecognizer, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs";
 
         const firebaseConfig = {
@@ -145,7 +144,7 @@
         let currentFrameIndex = 0;
         const frameOverlay = document.getElementById('frame-overlay');
         
-        // Setup สำหรับวาดเส้น
+        // Setup สำหรับวาดเส้น AI
         const outputCanvas = document.getElementById('output_canvas');
         const canvasCtx = outputCanvas.getContext('2d');
         let drawingUtils;
@@ -174,12 +173,20 @@
             clearInterval(autoSlideTimer);
         }
 
+        // เปิดกล้องและตั้งขนาด Canvas วาดเส้นให้พอดีกล้อง
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { width: { ideal: 1080 }, height: { ideal: 1920 }, facingMode: "user", frameRate: { ideal: 30, max: 60 } }
                 });
                 video.srcObject = stream;
+                
+                // อัปเดตขนาด Canvas เมื่อภาพวีดีโอโหลดมาแล้ว
+                video.addEventListener('loadeddata', () => {
+                    outputCanvas.width = video.videoWidth;
+                    outputCanvas.height = video.videoHeight;
+                });
+
             } catch (err) {
                 console.error("ไม่สามารถเปิดกล้องได้: ", err);
             }
@@ -198,7 +205,6 @@
                 numHands: 1 
             });
             
-            // เริ่มต้นใช้งาน DrawingUtils
             drawingUtils = new DrawingUtils(canvasCtx);
             
             document.getElementById('ai-status').innerText = "🟢 AI พร้อมใช้งานแล้ว";
@@ -219,20 +225,16 @@
                 let startTimeMs = performance.now();
                 const results = gestureRecognizer.recognizeForVideo(video, startTimeMs);
                 
-                // --- ส่วนการวาดเส้นลงบนหน้าจอแบบ Real-time ---
+                // วาดเส้นลงบนหน้าจอ
                 canvasCtx.save();
-                // เคลียร์ภาพวาดเก่าทุกเฟรม
                 canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
                 
-                // ถ้านับถอยหลังอยู่ หรืออยู่หน้าแสดงผลลัพธ์ ให้หยุดวาดเส้นกวนสายตา
                 if (!isCountingDown && document.getElementById('result-screen').style.display !== 'flex') {
                     if (results.landmarks && results.landmarks.length > 0) {
                         for (const landmarks of results.landmarks) {
-                            // วาดเส้นแกน (Connectors) สีฟ้า
                             drawingUtils.drawConnectors(landmarks, GestureRecognizer.HAND_CONNECTIONS, {
                                 color: "#00E5FF", lineWidth: 6
                             });
-                            // วาดจุดข้อต่อ (Landmarks) สีส้ม
                             drawingUtils.drawLandmarks(landmarks, {
                                 color: "#FF3D00", lineWidth: 4, radius: 5
                             });
@@ -240,7 +242,6 @@
                     }
                 }
                 canvasCtx.restore();
-                // ----------------------------------------------
 
                 processGestures(results);
                 
@@ -296,7 +297,6 @@
             isCountingDown = true;
             stopAutoSlide(); 
             
-            // ล้างเส้นออกทันทีที่เริ่มนับถอยหลัง
             canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
             
             let count = 5;
@@ -316,8 +316,8 @@
             }, 1000);
         }
 
-        const canvas = document.getElementById('canvas'); // Canvas ซ่อนสำหรับถ่ายรูป
-        const ctx = canvas.getContext('2d');
+        const captureCanvas = document.getElementById('canvas'); 
+        const captureCtx = captureCanvas.getContext('2d');
         const resultScreen = document.getElementById('result-screen');
         const finalImage = document.getElementById('final-image');
         const qrcodeContainer = document.getElementById('qrcode-container');
@@ -327,23 +327,23 @@
             document.body.style.backgroundColor = "#ffffff";
             setTimeout(() => { document.body.style.backgroundColor = "#121212"; }, 100);
 
-            ctx.save();
-            ctx.translate(canvas.width, 0);
-            ctx.scale(-1, 1);
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            ctx.restore();
+            captureCtx.save();
+            captureCtx.translate(captureCanvas.width, 0);
+            captureCtx.scale(-1, 1);
+            captureCtx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+            captureCtx.restore();
 
             const currentFrameImg = new Image();
             currentFrameImg.src = frames[currentFrameIndex];
             
             currentFrameImg.onload = () => {
-                ctx.drawImage(currentFrameImg, 0, 0, canvas.width, canvas.height);
+                captureCtx.drawImage(currentFrameImg, 0, 0, captureCanvas.width, captureCanvas.height);
                 
-                finalImage.src = canvas.toDataURL('image/png');
+                finalImage.src = captureCanvas.toDataURL('image/png');
                 resultScreen.style.display = 'flex';
                 qrcodeContainer.innerHTML = '<h3 style="color: black; margin: 0;">กำลังอัปโหลด...</h3>';
                 
-                canvas.toBlob(async (blob) => {
+                captureCanvas.toBlob(async (blob) => {
                     try {
                         const fileName = `photos/booth_${Date.now()}.png`;
                         const storageRef = ref(storage, fileName);
