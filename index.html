@@ -4,10 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Photo Booth Kiosk</title>
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet">
     
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
     <style>
         /* ตั้งค่า Layout สำหรับจอ Kiosk 1080x1920 */
         body {
@@ -22,6 +25,7 @@
             flex-direction: column;
             align-items: center;
             overflow: hidden; /* ล็อกหน้าจอไม่ให้เลื่อน */
+            position: relative;
         }
 
         /* ส่วนหัวของตู้ */
@@ -33,7 +37,7 @@
             font-size: 80px;
             margin: 0;
             font-weight: 700;
-            color: #00E5FF; /* สีฟ้าสไตล์เทคสมัยใหม่ */
+            color: #00E5FF;
         }
         .header p {
             font-size: 40px;
@@ -115,11 +119,27 @@
             align-items: center;
             box-shadow: 0 8px 20px rgba(255, 61, 0, 0.4);
             border: 8px solid #ffffff;
+            font-size: 80px;
         }
 
         /* ซ่อน Canvas ไว้ใช้ประมวลผลรวมภาพตอนหลัง */
         #canvas {
             display: none;
+        }
+
+        /* โซนแสดงผลลัพธ์และ QR Code */
+        #result-screen {
+            display: none; 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 1080px; 
+            height: 1920px; 
+            background-color: rgba(18, 18, 18, 0.98); 
+            z-index: 100; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center;
         }
     </style>
 </head>
@@ -143,13 +163,43 @@
 
     <canvas id="canvas" width="960" height="1280"></canvas>
 
+    <div id="result-screen">
+        <h2 style="font-size: 64px; color: #00E5FF; margin-bottom: 30px; font-weight: 700;">สแกนเพื่อดาวน์โหลดภาพ!</h2>
+        
+        <img id="final-image" style="width: 540px; height: 720px; object-fit: cover; border-radius: 20px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); margin-bottom: 50px;">
+        
+        <div id="qrcode-container" style="background: white; padding: 30px; border-radius: 20px; display: flex; align-items: center; justify-content: center; min-width: 300px; min-height: 300px;">
+            </div>
+        
+        <p style="font-size: 36px; margin-top: 40px; color: #aaaaaa;">ระบบจะกลับสู่หน้าหลักใน <span id="countdown-text" style="color: #FF3D00; font-weight: bold;">15</span> วินาที</p>
+        
+        <button class="btn-nav" id="btn-restart" style="margin-top: 40px;">ถ่ายรูปใหม่ทันที</button>
+    </div>
+
     <script type="module">
-        // --- 1. การจัดการกล้อง Webcam ---
+        // 1. นำเข้า Firebase และตั้งค่า
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
+        import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDMptdLpLEdbeVFKZj82M0gyoV2m_2y5Pk",
+            authDomain: "suchartstudio-9a78d.firebaseapp.com",
+            databaseURL: "https://suchartstudio-9a78d-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "suchartstudio-9a78d",
+            storageBucket: "suchartstudio-9a78d.firebasestorage.app",
+            messagingSenderId: "953369646185",
+            appId: "1:953369646185:web:99057e30888de3566ebef8",
+            measurementId: "G-NECPG05SFT"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const storage = getStorage(app);
+
+        // 2. การจัดการกล้อง Webcam
         const video = document.getElementById('webcam');
         
         async function initCamera() {
             try {
-                // ขออนุญาตเปิดกล้องหน้า/กล้องหลัก ตั้งความละเอียดให้เหมาะสม
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { 
                         width: { ideal: 1080 },
@@ -163,65 +213,112 @@
                 alert("กรุณาอนุญาตการใช้งานกล้องและตรวจสอบการเชื่อมต่ออุปกรณ์");
             }
         }
-        
-        // เรียกเปิดกล้องทันทีที่โหลดหน้าเว็บ
         initCamera();
 
-
-        // --- 2. การจัดการเปลี่ยนกรอบรูป ---
-        // สมมติว่ามีกรอบรูป 3 แบบอยู่ในโฟลเดอร์เดียวกัน
+        // 3. การจัดการเปลี่ยนกรอบรูป
         const frames = ['frame1.png', 'frame2.png', 'frame3.png']; 
         let currentFrameIndex = 0;
         const frameOverlay = document.getElementById('frame-overlay');
 
         document.getElementById('btn-prev').addEventListener('click', () => {
             currentFrameIndex--;
-            if (currentFrameIndex < 0) {
-                currentFrameIndex = frames.length - 1;
-            }
+            if (currentFrameIndex < 0) currentFrameIndex = frames.length - 1;
             frameOverlay.src = frames[currentFrameIndex];
         });
 
         document.getElementById('btn-next').addEventListener('click', () => {
             currentFrameIndex++;
-            if (currentFrameIndex >= frames.length) {
-                currentFrameIndex = 0;
-            }
+            if (currentFrameIndex >= frames.length) currentFrameIndex = 0;
             frameOverlay.src = frames[currentFrameIndex];
         });
 
-
-        // --- 3. การเตรียมวาดภาพลง Canvas (เตรียมพร้อมสำหรับการ Save) ---
+        // 4. การจัดการถ่ายภาพและอัปโหลด
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const resultScreen = document.getElementById('result-screen');
+        const finalImage = document.getElementById('final-image');
+        const qrcodeContainer = document.getElementById('qrcode-container');
+        let countdownInterval;
 
         document.getElementById('btn-capture').addEventListener('click', () => {
-            // เนื่องจากวีดีโอกลับด้าน (Mirror) ตอนวาดลง Canvas ต้องกลับด้านกลับมาให้ถูกต้อง
+            // เอฟเฟกต์แฟลช
+            document.body.style.backgroundColor = "#ffffff";
+            setTimeout(() => { document.body.style.backgroundColor = "#121212"; }, 100);
+
+            // วาดภาพจากกล้อง (กลับด้านภาพให้ถูกต้อง)
             ctx.save();
             ctx.translate(canvas.width, 0);
             ctx.scale(-1, 1);
-            // วาดภาพจากกล้องลง Canvas
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             ctx.restore();
 
-            // วาดกรอบรูปทับลงไป
+            // วาดกรอบรูปทับ
             const currentFrameImg = new Image();
             currentFrameImg.src = frames[currentFrameIndex];
+            
             currentFrameImg.onload = () => {
                 ctx.drawImage(currentFrameImg, 0, 0, canvas.width, canvas.height);
                 
-                // ถึงจุดนี้ ภาพถูกรวมอยู่ใน Canvas แล้ว 
-                // สามารถใช้ canvas.toDataURL('image/png') หรือ canvas.toBlob() 
-                // เพื่อส่งขึ้น Firebase Storage ในขั้นตอนต่อไป
-                console.log("ถ่ายภาพและรวมเลเยอร์สำเร็จ เตรียมส่งขึ้น Firebase");
+                // แสดงหน้าผลลัพธ์ทันที
+                finalImage.src = canvas.toDataURL('image/png');
+                resultScreen.style.display = 'flex';
+                qrcodeContainer.innerHTML = '<h3 style="color: black; margin: 0;">กำลังประมวลผล...</h3>';
                 
-                // เอฟเฟกต์แฟลชเมื่อถ่ายรูป
-                document.body.style.backgroundColor = "#ffffff";
-                setTimeout(() => {
-                    document.body.style.backgroundColor = "#121212";
-                }, 100);
+                // แปลง Canvas เป็น Blob และอัปโหลด
+                canvas.toBlob(async (blob) => {
+                    try {
+                        const fileName = `photos/booth_${Date.now()}.png`;
+                        const storageRef = ref(storage, fileName);
+
+                        await uploadBytes(storageRef, blob);
+                        const downloadURL = await getDownloadURL(storageRef);
+                        
+                        // สร้าง QR Code
+                        qrcodeContainer.innerHTML = ''; 
+                        new QRCode(qrcodeContainer, {
+                            text: downloadURL,
+                            width: 300,
+                            height: 300,
+                            colorDark : "#000000",
+                            colorLight : "#ffffff",
+                            correctLevel : QRCode.CorrectLevel.H
+                        });
+
+                        // เริ่มนับถอยหลังกลับหน้าหลัก 15 วินาที
+                        startCountdown(15);
+
+                    } catch (error) {
+                        console.error("อัปโหลดไม่สำเร็จ:", error);
+                        qrcodeContainer.innerHTML = '<h3 style="color: red;">เกิดข้อผิดพลาด</h3>';
+                        startCountdown(5); // ถ้าระบบพัง ให้รอนิดนึงแล้วกลับหน้าหลัก
+                    }
+                }, 'image/png');
             };
         });
+
+        // 5. ฟังก์ชันนับถอยหลังและรีเซ็ต
+        function startCountdown(seconds) {
+            let timeLeft = seconds;
+            document.getElementById('countdown-text').innerText = timeLeft;
+            
+            countdownInterval = setInterval(() => {
+                timeLeft--;
+                document.getElementById('countdown-text').innerText = timeLeft;
+                if (timeLeft <= 0) {
+                    resetKiosk();
+                }
+            }, 1000);
+        }
+
+        function resetKiosk() {
+            clearInterval(countdownInterval);
+            resultScreen.style.display = 'none'; 
+            qrcodeContainer.innerHTML = '';      
+        }
+
+        // ปุ่มถ่ายรูปใหม่ทันที
+        document.getElementById('btn-restart').addEventListener('click', resetKiosk);
+
     </script>
 </body>
 </html>
