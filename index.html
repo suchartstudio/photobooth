@@ -48,7 +48,8 @@
         #frame-overlay { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             pointer-events: none; z-index: 10;
-            transition: opacity 0.3s ease-in-out;
+            /* ปรับความนุ่มนวลเวลาเปลี่ยนภาพให้ค่อยๆ เฟด */
+            transition: opacity 0.5s ease-in-out;
         }
 
         #capture-countdown {
@@ -153,9 +154,11 @@
         let gestureCooldown = 0;
         let isPredicting = false; 
 
-        // Auto Slide
+        // --- อัปเดตระบบ Auto Slide & Idle Timer ---
         let autoSlideTimer;
-        const AUTO_SLIDE_DELAY = 5000; 
+        let userIdleTimer;
+        const AUTO_SLIDE_INTERVAL = 6000; // เปลี่ยนรูปทุก 6 วินาทีตอนไม่มีคน
+        const IDLE_TIMEOUT = 10000;       // ถ้าไม่เจอมือคน 10 วินาที ให้กลับไป Auto-slide
 
         function startAutoSlide() {
             clearInterval(autoSlideTimer);
@@ -163,11 +166,22 @@
                 if (!isCountingDown && document.getElementById('result-screen').style.display !== 'flex') {
                     changeFrame(1);
                 }
-            }, AUTO_SLIDE_DELAY);
+            }, AUTO_SLIDE_INTERVAL);
         }
 
         function stopAutoSlide() {
             clearInterval(autoSlideTimer);
+        }
+
+        // ฟังก์ชันจัดการเมื่อเจอคนหน้ากล้อง
+        function handleUserPresence() {
+            stopAutoSlide(); // หยุดเปลี่ยนรูปทันที
+            clearTimeout(userIdleTimer); // รีเซ็ตเวลารอคนหาย
+            
+            // เริ่มนับเวลาใหม่ ถ้าครบ 10 วิไม่มีความเคลื่อนไหว ให้เริ่ม Auto-slide ใหม่
+            userIdleTimer = setTimeout(() => {
+                startAutoSlide();
+            }, IDLE_TIMEOUT);
         }
 
         async function initCamera() {
@@ -223,9 +237,11 @@
                 canvasCtx.save();
                 canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
                 
-                // แก้ไข: ให้โชว์เส้นตลอด ยกเว้นตอนแสดงหน้าผลลัพธ์ (ถึงจะนับถอยหลังอยู่ก็โชว์เส้น)
                 if (document.getElementById('result-screen').style.display !== 'flex') {
                     if (results.landmarks && results.landmarks.length > 0) {
+                        
+                        handleUserPresence(); // แจ้งระบบว่า "มีคนอยู่หน้ากล้องนะ หยุด Auto-slide ได้เลย"
+
                         for (const landmarks of results.landmarks) {
                             drawingUtils.drawConnectors(landmarks, GestureRecognizer.HAND_CONNECTIONS, {
                                 color: "#00E5FF", lineWidth: 6
@@ -254,19 +270,27 @@
                 const x = hand[0].x; 
                 
                 if (Date.now() > gestureCooldown) {
-                    if (x < 0.25) { 
+                    
+                    // --- อัปเดตโซนความแม่นยำของการปัดมือ ---
+                    const LEFT_ZONE = 0.35;   // ปัดผ่าน 35% ของจอถือว่าไปซ้ายแล้ว (ไม่ต้องปัดสุดแขน)
+                    const RIGHT_ZONE = 0.65;  // ปัดผ่าน 65% ของจอถือว่าไปขวาแล้ว
+                    const CENTER_MIN = 0.45;  // โซนตรงกลางสำหรับ Reset ค่า
+                    const CENTER_MAX = 0.55;
+
+                    if (x < LEFT_ZONE) { 
                         if (handPositionState === "right" || handPositionState === "center") {
                             changeFrame(-1); 
-                            gestureCooldown = Date.now() + 1000; 
+                            gestureCooldown = Date.now() + 1500; // ป้องกันปัดติดเบิ้ล 1.5 วินาที
                         }
                         handPositionState = "left";
-                    } else if (x > 0.75) {
+                    } else if (x > RIGHT_ZONE) {
                         if (handPositionState === "left" || handPositionState === "center") {
                             changeFrame(1);
-                            gestureCooldown = Date.now() + 1000;
+                            gestureCooldown = Date.now() + 1500;
                         }
                         handPositionState = "right";
-                    } else if (x > 0.35 && x < 0.65) {
+                    } else if (x > CENTER_MIN && x < CENTER_MAX) {
+                        // ต้องดึงมือกลับมาไว้ช่วงตรงกลางจอก่อน ถึงจะพร้อมรับการปัดครั้งใหม่
                         handPositionState = "center"; 
                     }
 
@@ -284,15 +308,19 @@
             currentFrameIndex += direction;
             if (currentFrameIndex < 0) currentFrameIndex = frames.length - 1;
             if (currentFrameIndex >= frames.length) currentFrameIndex = 0;
-            frameOverlay.src = frames[currentFrameIndex];
-            startAutoSlide();
+            
+            // เพิ่มเอฟเฟกต์เฟดภาพแบบนุ่มนวล
+            frameOverlay.style.opacity = 0;
+            setTimeout(() => {
+                frameOverlay.src = frames[currentFrameIndex];
+                frameOverlay.style.opacity = 1;
+            }, 300); // ดีเลย์ตาม opacity transition
         }
 
         function startCaptureCountdown() {
             isCountingDown = true;
             stopAutoSlide(); 
-            
-            // ลบคำสั่งล้างเส้นตรงนี้ออก เพื่อให้เส้นยังคงวาดต่อไปตามมือ
+            clearTimeout(userIdleTimer);
             
             let count = 5;
             const countdownOverlay = document.getElementById('capture-countdown');
@@ -319,7 +347,6 @@
         let resetInterval;
 
         function takePhoto() {
-            // ล้างหน้าจอเส้น Skeleton สีฟ้าทิ้งทันทีตอนกดชัตเตอร์ จะได้ไม่รบกวนหน้าผลลัพธ์
             canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
             
             document.body.style.backgroundColor = "#ffffff";
@@ -380,7 +407,8 @@
                     qrcodeContainer.innerHTML = '';
                     
                     isCountingDown = false;
-                    startAutoSlide(); 
+                    // เมื่อจบ Process ให้เริ่มรอคนใหม่ ถ้าไม่มีใคร 10 วิ ก็เริ่ม Slide
+                    handleUserPresence(); 
                 }
             }, 1000);
         }
