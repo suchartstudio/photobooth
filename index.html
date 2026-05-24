@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Booth Kiosk</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* ตั้งค่า Layout สำหรับจอ Kiosk 1080x1920 */
+        body {
+            margin: 0;
+            padding: 0;
+            width: 1080px;
+            height: 1920px;
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Chakra Petch', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: hidden; /* ล็อกหน้าจอไม่ให้เลื่อน */
+        }
+
+        /* ส่วนหัวของตู้ */
+        .header {
+            margin-top: 60px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 80px;
+            margin: 0;
+            font-weight: 700;
+            color: #00E5FF; /* สีฟ้าสไตล์เทคสมัยใหม่ */
+        }
+        .header p {
+            font-size: 40px;
+            margin: 10px 0 0 0;
+            color: #aaaaaa;
+        }
+
+        /* คอนเทนเนอร์แสดงกล้องและกรอบรูป */
+        .camera-container {
+            position: relative;
+            width: 960px;
+            height: 1280px;
+            margin-top: 50px;
+            background-color: #000000;
+            border-radius: 30px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        /* กล้อง Webcam (กลับด้านซ้ายขวาให้เหมือนกระจก) */
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); 
+        }
+
+        /* กรอบรูป PNG ซ้อนทับด้านบน */
+        #frame-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* เพื่อไม่ให้ขวางการทัช */
+            z-index: 10;
+        }
+
+        /* แผงควบคุมปุ่มกด */
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 960px;
+            margin-top: 60px;
+        }
+
+        /* สไตล์ปุ่มกดขนาดใหญ่ UX สำหรับจอทัชสกรีน */
+        button {
+            font-family: 'Chakra Petch', sans-serif;
+            font-size: 48px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            border-radius: 20px;
+            transition: transform 0.1s, background-color 0.2s;
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .btn-nav {
+            background-color: #333333;
+            color: white;
+            padding: 30px 60px;
+        }
+        .btn-nav:hover {
+            background-color: #444444;
+        }
+
+        .btn-capture {
+            background-color: #FF3D00;
+            color: white;
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 8px 20px rgba(255, 61, 0, 0.4);
+            border: 8px solid #ffffff;
+        }
+
+        /* ซ่อน Canvas ไว้ใช้ประมวลผลรวมภาพตอนหลัง */
+        #canvas {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>SNAPSHOT STUDIO</h1>
+        <p>แตะเพื่อเปลี่ยนกรอบรูป และกดปุ่มวงกลมเพื่อถ่ายภาพ</p>
+    </div>
+
+    <div class="camera-container">
+        <video id="webcam" autoplay playsinline></video>
+        <img id="frame-overlay" src="frame1.png" alt="Frame Overlay">
+    </div>
+
+    <div class="controls">
+        <button class="btn-nav" id="btn-prev">◀ ก่อนหน้า</button>
+        <button class="btn-capture" id="btn-capture">📷</button>
+        <button class="btn-nav" id="btn-next">ถัดไป ▶</button>
+    </div>
+
+    <canvas id="canvas" width="960" height="1280"></canvas>
+
+    <script type="module">
+        // --- 1. การจัดการกล้อง Webcam ---
+        const video = document.getElementById('webcam');
+        
+        async function initCamera() {
+            try {
+                // ขออนุญาตเปิดกล้องหน้า/กล้องหลัก ตั้งความละเอียดให้เหมาะสม
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        width: { ideal: 1080 },
+                        height: { ideal: 1920 },
+                        facingMode: "user" 
+                    }
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error("ไม่สามารถเปิดกล้องได้: ", err);
+                alert("กรุณาอนุญาตการใช้งานกล้องและตรวจสอบการเชื่อมต่ออุปกรณ์");
+            }
+        }
+        
+        // เรียกเปิดกล้องทันทีที่โหลดหน้าเว็บ
+        initCamera();
+
+
+        // --- 2. การจัดการเปลี่ยนกรอบรูป ---
+        // สมมติว่ามีกรอบรูป 3 แบบอยู่ในโฟลเดอร์เดียวกัน
+        const frames = ['frame1.png', 'frame2.png', 'frame3.png']; 
+        let currentFrameIndex = 0;
+        const frameOverlay = document.getElementById('frame-overlay');
+
+        document.getElementById('btn-prev').addEventListener('click', () => {
+            currentFrameIndex--;
+            if (currentFrameIndex < 0) {
+                currentFrameIndex = frames.length - 1;
+            }
+            frameOverlay.src = frames[currentFrameIndex];
+        });
+
+        document.getElementById('btn-next').addEventListener('click', () => {
+            currentFrameIndex++;
+            if (currentFrameIndex >= frames.length) {
+                currentFrameIndex = 0;
+            }
+            frameOverlay.src = frames[currentFrameIndex];
+        });
+
+
+        // --- 3. การเตรียมวาดภาพลง Canvas (เตรียมพร้อมสำหรับการ Save) ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        document.getElementById('btn-capture').addEventListener('click', () => {
+            // เนื่องจากวีดีโอกลับด้าน (Mirror) ตอนวาดลง Canvas ต้องกลับด้านกลับมาให้ถูกต้อง
+            ctx.save();
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1);
+            // วาดภาพจากกล้องลง Canvas
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            ctx.restore();
+
+            // วาดกรอบรูปทับลงไป
+            const currentFrameImg = new Image();
+            currentFrameImg.src = frames[currentFrameIndex];
+            currentFrameImg.onload = () => {
+                ctx.drawImage(currentFrameImg, 0, 0, canvas.width, canvas.height);
+                
+                // ถึงจุดนี้ ภาพถูกรวมอยู่ใน Canvas แล้ว 
+                // สามารถใช้ canvas.toDataURL('image/png') หรือ canvas.toBlob() 
+                // เพื่อส่งขึ้น Firebase Storage ในขั้นตอนต่อไป
+                console.log("ถ่ายภาพและรวมเลเยอร์สำเร็จ เตรียมส่งขึ้น Firebase");
+                
+                // เอฟเฟกต์แฟลชเมื่อถ่ายรูป
+                document.body.style.backgroundColor = "#ffffff";
+                setTimeout(() => {
+                    document.body.style.backgroundColor = "#121212";
+                }, 100);
+            };
+        });
+    </script>
+</body>
+</html>
