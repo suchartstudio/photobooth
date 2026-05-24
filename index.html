@@ -32,16 +32,18 @@
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
         }
 
-        /* เปิดใช้ GPU Acceleration เพื่อเร่งความเร็วการแสดงผลวิดีโอ */
         #webcam { 
             width: 100%; height: 100%; object-fit: cover; 
             transform: scaleX(-1) translateZ(0); 
             will-change: transform;
         }
         
-        #frame-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        #frame-overlay { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            pointer-events: none; z-index: 10;
+            transition: opacity 0.3s ease-in-out; /* เพิ่ม Effect ให้เฟรมเปลี่ยนนุ่มนวลขึ้น */
+        }
 
-        /* ตัวเลขนับถอยหลังกลางจอ */
         #capture-countdown {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             display: none; justify-content: center; align-items: center;
@@ -49,7 +51,6 @@
             text-shadow: 0 10px 50px rgba(0,0,0,0.8); z-index: 20;
         }
 
-        /* คำแนะนำด้านล่าง */
         .instruction-panel {
             display: flex; justify-content: center; align-items: center; gap: 60px;
             width: 960px; margin-top: 60px;
@@ -61,14 +62,12 @@
 
         #canvas { display: none; }
 
-        /* โซนแสดงผลลัพธ์ */
         #result-screen {
             display: none; position: absolute; top: 0; left: 0; 
             width: 1080px; height: 1920px; background-color: rgba(18, 18, 18, 0.98); 
             z-index: 100; flex-direction: column; align-items: center; justify-content: center;
         }
         
-        /* Popup แจ้งเตือนสถานะ AI */
         #ai-status {
             position: absolute; top: 20px; right: 20px;
             background-color: #FF3D00; color: white; padding: 10px 20px;
@@ -88,7 +87,6 @@
     <div class="camera-container">
         <video id="webcam" autoplay playsinline></video>
         <img id="frame-overlay" src="frame1.png" alt="Frame Overlay">
-        
         <div id="capture-countdown">5</div>
     </div>
 
@@ -113,11 +111,8 @@
     </div>
 
     <script type="module">
-        // --- 1. การนำเข้า Firebase ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
-
-        // --- 2. การนำเข้า MediaPipe สำหรับ Hand Gesture ---
         import { GestureRecognizer, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs";
 
         const firebaseConfig = {
@@ -134,7 +129,6 @@
         const app = initializeApp(firebaseConfig);
         const storage = getStorage(app);
 
-        // --- ตัวแปรจัดการ State ของระบบ ---
         const video = document.getElementById('webcam');
         const frames = ['frame1.png', 'frame2.png', 'frame3.png']; 
         let currentFrameIndex = 0;
@@ -145,18 +139,30 @@
         let lastVideoTime = -1;
         let handPositionState = "center"; 
         let gestureCooldown = 0;
-        let isPredicting = false; // ป้องกันการคำนวณ AI ซ้อนทับกัน
+        let isPredicting = false; 
 
-        // --- 3. เปิดกล้อง Webcam (บังคับ Frame Rate ให้สูง) ---
+        // --- ระบบ Auto Slide ---
+        let autoSlideTimer;
+        const AUTO_SLIDE_DELAY = 4000; // เวลาหน่วยมิลลิวินาที (4 วินาที) เปลี่ยนภาพทีนึงเมื่อไม่มีคนใช้งาน
+
+        function startAutoSlide() {
+            clearInterval(autoSlideTimer);
+            autoSlideTimer = setInterval(() => {
+                // ให้เปลี่ยนรูปอัตโนมัติเฉพาะตอนที่ไม่ได้นับถอยหลัง และไม่ได้อยู่หน้าผลลัพธ์
+                if (!isCountingDown && document.getElementById('result-screen').style.display !== 'flex') {
+                    changeFrame(1);
+                }
+            }, AUTO_SLIDE_DELAY);
+        }
+
+        function stopAutoSlide() {
+            clearInterval(autoSlideTimer);
+        }
+
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { 
-                        width: { ideal: 1080 }, 
-                        height: { ideal: 1920 }, 
-                        facingMode: "user",
-                        frameRate: { ideal: 30, max: 60 } // บังคับให้กล้องส่งภาพมาลื่นที่สุด
-                    }
+                    video: { width: { ideal: 1080 }, height: { ideal: 1920 }, facingMode: "user", frameRate: { ideal: 30, max: 60 } }
                 });
                 video.srcObject = stream;
             } catch (err) {
@@ -164,7 +170,6 @@
             }
         }
 
-        // --- 4. โหลด AI Model (MediaPipe) ---
         async function createGestureRecognizer() {
             const vision = await FilesetResolver.forVisionTasks(
                 "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
@@ -172,46 +177,38 @@
             gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
                 baseOptions: {
                     modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
-                    delegate: "GPU" // ใช้การ์ดจอช่วยประมวลผล AI
+                    delegate: "GPU" 
                 },
                 runningMode: "VIDEO",
-                numHands: 1 // จับมือเดียวเพื่อลดการทำงานของเครื่อง
+                numHands: 1 
             });
             
             document.getElementById('ai-status').innerText = "🟢 AI พร้อมใช้งานแล้ว";
             setTimeout(() => { document.getElementById('ai-status').style.display = 'none'; }, 2000);
             
-            // เริ่ม Loop ตรวจจับภาพ
             predictWebcam();
         }
 
-        // --- 5. Loop ตรวจจับท่าทางจากวีดีโอ (ปรับปรุงประสิทธิภาพ) ---
         function predictWebcam() {
             if (!gestureRecognizer) {
                 requestAnimationFrame(predictWebcam);
                 return;
             }
-            
-            // ให้ AI ทำงานเฉพาะตอนที่เฟรมใหม่มา และไม่ได้ค้างคำนวณอยู่
             if (video.currentTime !== lastVideoTime && !isPredicting) {
                 isPredicting = true;
                 lastVideoTime = video.currentTime;
                 
-                // ใช้ performance.now() ตามที่ MediaPipe แนะนำเพื่อความแม่นยำ
                 let startTimeMs = performance.now();
                 const results = gestureRecognizer.recognizeForVideo(video, startTimeMs);
                 processGestures(results);
                 
                 isPredicting = false;
             }
-            
             requestAnimationFrame(predictWebcam);
         }
 
-        // --- 6. ตรรกะประมวลผลท่าทาง (Swipe & Victory) ---
         function processGestures(results) {
             const resultScreen = document.getElementById('result-screen');
-            // หากกำลังนับถอยหลัง หรือแสดงหน้าผลลัพธ์อยู่ ให้ข้ามการรับคำสั่ง
             if (isCountingDown || resultScreen.style.display === 'flex') return;
 
             if (results.landmarks.length > 0) {
@@ -219,8 +216,6 @@
                 const x = hand[0].x; 
                 
                 if (Date.now() > gestureCooldown) {
-                    
-                    // 1. ตรวจจับการปัดมือ (แบ่งโซน ซ้าย-กลาง-ขวา)
                     if (x < 0.25) { 
                         if (handPositionState === "right" || handPositionState === "center") {
                             changeFrame(-1); 
@@ -237,7 +232,6 @@
                         handPositionState = "center"; 
                     }
 
-                    // 2. ตรวจจับชู 2 นิ้ว (Victory)
                     if (results.gestures.length > 0) {
                         const categoryName = results.gestures[0][0].categoryName;
                         if (categoryName === "Victory") {
@@ -250,14 +244,21 @@
 
         function changeFrame(direction) {
             currentFrameIndex += direction;
+            
+            // ตรรกะ Loop เฟรมภาพ (ทำให้ปัดซ้ายขวาได้ไม่สิ้นสุด)
             if (currentFrameIndex < 0) currentFrameIndex = frames.length - 1;
             if (currentFrameIndex >= frames.length) currentFrameIndex = 0;
+            
             frameOverlay.src = frames[currentFrameIndex];
+            
+            // รีเซ็ตตัวจับเวลา Auto-Slide ทันทีที่มีการเปลี่ยนรูป (ทั้งแบบผู้ใช้ปัดเอง หรือระบบเลื่อนเอง)
+            startAutoSlide();
         }
 
-        // --- 7. การนับถอยหลัง 5 วินาที ---
         function startCaptureCountdown() {
             isCountingDown = true;
+            stopAutoSlide(); // หยุดเลื่อนภาพอัตโนมัติขณะกำลังถ่าย
+            
             let count = 5;
             const countdownOverlay = document.getElementById('capture-countdown');
             countdownOverlay.style.display = 'flex';
@@ -275,7 +276,6 @@
             }, 1000);
         }
 
-        // --- 8. ถ่ายภาพ, รวมเลเยอร์, อัปโหลด Firebase และ Gen QR ---
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const resultScreen = document.getElementById('result-screen');
@@ -284,11 +284,9 @@
         let resetInterval;
 
         function takePhoto() {
-            // เอฟเฟกต์แฟลช
             document.body.style.backgroundColor = "#ffffff";
             setTimeout(() => { document.body.style.backgroundColor = "#121212"; }, 100);
 
-            // วาดรูปลง Canvas
             ctx.save();
             ctx.translate(canvas.width, 0);
             ctx.scale(-1, 1);
@@ -331,7 +329,6 @@
             };
         }
 
-        // --- 9. รีเซ็ตกลับสู่หน้าหลัก ---
         function startResetTimer(seconds) {
             let timeLeft = seconds;
             document.getElementById('countdown-text').innerText = timeLeft;
@@ -343,14 +340,16 @@
                     clearInterval(resetInterval);
                     resultScreen.style.display = 'none'; 
                     qrcodeContainer.innerHTML = '';
-                    isCountingDown = false; // ปลดล็อคให้รับท่าทางใหม่ได้
+                    
+                    isCountingDown = false;
+                    startAutoSlide(); // กลับมาเปิดระบบเลื่อนภาพอัตโนมัติอีกครั้ง
                 }
             }, 1000);
         }
 
-        // --- เริ่มต้นการทำงาน ---
         initCamera().then(() => {
             createGestureRecognizer();
+            startAutoSlide(); // เริ่มตัวจับเวลาเลื่อนภาพทันทีที่กล้องเปิดสำเร็จ
         });
 
     </script>
