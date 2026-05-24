@@ -37,11 +37,18 @@
             transform: scaleX(-1) translateZ(0); 
             will-change: transform;
         }
+
+        /* เพิ่ม Canvas สำหรับวาดเส้น Skeleton ทับวีดีโอ */
+        #output_canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 5; pointer-events: none; /* ไม่ให้กันการ Touch */
+            transform: scaleX(-1); /* กลับด้านให้ตรงกับวีดีโอกระจก */
+        }
         
         #frame-overlay { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             pointer-events: none; z-index: 10;
-            transition: opacity 0.3s ease-in-out; /* เพิ่ม Effect ให้เฟรมเปลี่ยนนุ่มนวลขึ้น */
+            transition: opacity 0.3s ease-in-out;
         }
 
         #capture-countdown {
@@ -86,6 +93,8 @@
 
     <div class="camera-container">
         <video id="webcam" autoplay playsinline></video>
+        <canvas id="output_canvas" width="960" height="1280"></canvas>
+        
         <img id="frame-overlay" src="frame1.png" alt="Frame Overlay">
         <div id="capture-countdown">5</div>
     </div>
@@ -113,7 +122,9 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
-        import { GestureRecognizer, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs";
+        
+        // นำเข้า DrawingUtils เพิ่มเข้ามาเพื่อใช้วาดเส้น
+        import { GestureRecognizer, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDMptdLpLEdbeVFKZj82M0gyoV2m_2y5Pk",
@@ -134,6 +145,11 @@
         let currentFrameIndex = 0;
         const frameOverlay = document.getElementById('frame-overlay');
         
+        // Setup สำหรับวาดเส้น
+        const outputCanvas = document.getElementById('output_canvas');
+        const canvasCtx = outputCanvas.getContext('2d');
+        let drawingUtils;
+        
         let gestureRecognizer;
         let isCountingDown = false;
         let lastVideoTime = -1;
@@ -141,14 +157,13 @@
         let gestureCooldown = 0;
         let isPredicting = false; 
 
-        // --- ระบบ Auto Slide ---
+        // Auto Slide
         let autoSlideTimer;
-        const AUTO_SLIDE_DELAY = 4000; // เวลาหน่วยมิลลิวินาที (4 วินาที) เปลี่ยนภาพทีนึงเมื่อไม่มีคนใช้งาน
+        const AUTO_SLIDE_DELAY = 4000; 
 
         function startAutoSlide() {
             clearInterval(autoSlideTimer);
             autoSlideTimer = setInterval(() => {
-                // ให้เปลี่ยนรูปอัตโนมัติเฉพาะตอนที่ไม่ได้นับถอยหลัง และไม่ได้อยู่หน้าผลลัพธ์
                 if (!isCountingDown && document.getElementById('result-screen').style.display !== 'flex') {
                     changeFrame(1);
                 }
@@ -183,6 +198,9 @@
                 numHands: 1 
             });
             
+            // เริ่มต้นใช้งาน DrawingUtils
+            drawingUtils = new DrawingUtils(canvasCtx);
+            
             document.getElementById('ai-status').innerText = "🟢 AI พร้อมใช้งานแล้ว";
             setTimeout(() => { document.getElementById('ai-status').style.display = 'none'; }, 2000);
             
@@ -200,6 +218,30 @@
                 
                 let startTimeMs = performance.now();
                 const results = gestureRecognizer.recognizeForVideo(video, startTimeMs);
+                
+                // --- ส่วนการวาดเส้นลงบนหน้าจอแบบ Real-time ---
+                canvasCtx.save();
+                // เคลียร์ภาพวาดเก่าทุกเฟรม
+                canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+                
+                // ถ้านับถอยหลังอยู่ หรืออยู่หน้าแสดงผลลัพธ์ ให้หยุดวาดเส้นกวนสายตา
+                if (!isCountingDown && document.getElementById('result-screen').style.display !== 'flex') {
+                    if (results.landmarks && results.landmarks.length > 0) {
+                        for (const landmarks of results.landmarks) {
+                            // วาดเส้นแกน (Connectors) สีฟ้า
+                            drawingUtils.drawConnectors(landmarks, GestureRecognizer.HAND_CONNECTIONS, {
+                                color: "#00E5FF", lineWidth: 6
+                            });
+                            // วาดจุดข้อต่อ (Landmarks) สีส้ม
+                            drawingUtils.drawLandmarks(landmarks, {
+                                color: "#FF3D00", lineWidth: 4, radius: 5
+                            });
+                        }
+                    }
+                }
+                canvasCtx.restore();
+                // ----------------------------------------------
+
                 processGestures(results);
                 
                 isPredicting = false;
@@ -244,20 +286,18 @@
 
         function changeFrame(direction) {
             currentFrameIndex += direction;
-            
-            // ตรรกะ Loop เฟรมภาพ (ทำให้ปัดซ้ายขวาได้ไม่สิ้นสุด)
             if (currentFrameIndex < 0) currentFrameIndex = frames.length - 1;
             if (currentFrameIndex >= frames.length) currentFrameIndex = 0;
-            
             frameOverlay.src = frames[currentFrameIndex];
-            
-            // รีเซ็ตตัวจับเวลา Auto-Slide ทันทีที่มีการเปลี่ยนรูป (ทั้งแบบผู้ใช้ปัดเอง หรือระบบเลื่อนเอง)
             startAutoSlide();
         }
 
         function startCaptureCountdown() {
             isCountingDown = true;
-            stopAutoSlide(); // หยุดเลื่อนภาพอัตโนมัติขณะกำลังถ่าย
+            stopAutoSlide(); 
+            
+            // ล้างเส้นออกทันทีที่เริ่มนับถอยหลัง
+            canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
             
             let count = 5;
             const countdownOverlay = document.getElementById('capture-countdown');
@@ -276,7 +316,7 @@
             }, 1000);
         }
 
-        const canvas = document.getElementById('canvas');
+        const canvas = document.getElementById('canvas'); // Canvas ซ่อนสำหรับถ่ายรูป
         const ctx = canvas.getContext('2d');
         const resultScreen = document.getElementById('result-screen');
         const finalImage = document.getElementById('final-image');
@@ -342,14 +382,14 @@
                     qrcodeContainer.innerHTML = '';
                     
                     isCountingDown = false;
-                    startAutoSlide(); // กลับมาเปิดระบบเลื่อนภาพอัตโนมัติอีกครั้ง
+                    startAutoSlide(); 
                 }
             }, 1000);
         }
 
         initCamera().then(() => {
             createGestureRecognizer();
-            startAutoSlide(); // เริ่มตัวจับเวลาเลื่อนภาพทันทีที่กล้องเปิดสำเร็จ
+            startAutoSlide(); 
         });
 
     </script>
