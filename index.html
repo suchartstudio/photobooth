@@ -3,183 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Photo Booth Kiosk</title>
+    <title>AI Photo Booth Kiosk</title>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
     <style>
-        /* ตั้งค่า Layout สำหรับจอ Kiosk 1080x1920 */
         body {
-            margin: 0;
-            padding: 0;
-            width: 1080px;
-            height: 1920px;
-            background-color: #121212;
-            color: #ffffff;
+            margin: 0; padding: 0;
+            width: 1080px; height: 1920px;
+            background-color: #121212; color: #ffffff;
             font-family: 'Chakra Petch', sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            overflow: hidden; /* ล็อกหน้าจอไม่ให้เลื่อน */
-            position: relative;
+            display: flex; flex-direction: column; align-items: center;
+            overflow: hidden; position: relative;
         }
 
-        /* ส่วนหัวของตู้ */
-        .header {
-            margin-top: 60px;
-            text-align: center;
-        }
-        .header h1 {
-            font-size: 80px;
-            margin: 0;
-            font-weight: 700;
-            color: #00E5FF;
-        }
-        .header p {
-            font-size: 40px;
-            margin: 10px 0 0 0;
-            color: #aaaaaa;
-        }
+        .header { margin-top: 60px; text-align: center; }
+        .header h1 { font-size: 80px; margin: 0; font-weight: 700; color: #00E5FF; }
+        .header p { font-size: 36px; margin: 10px 0 0 0; color: #aaaaaa; }
 
-        /* คอนเทนเนอร์แสดงกล้องและกรอบรูป */
         .camera-container {
-            position: relative;
-            width: 960px;
-            height: 1280px;
-            margin-top: 50px;
-            background-color: #000000;
-            border-radius: 30px;
-            overflow: hidden;
+            position: relative; width: 960px; height: 1280px;
+            margin-top: 50px; background-color: #000000;
+            border-radius: 30px; overflow: hidden;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
         }
 
-        /* กล้อง Webcam (กลับด้านซ้ายขวาให้เหมือนกระจก) */
-        #webcam {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transform: scaleX(-1); 
+        #webcam { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        #frame-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+
+        /* ตัวเลขนับถอยหลังกลางจอ */
+        #capture-countdown {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; justify-content: center; align-items: center;
+            font-size: 400px; font-weight: 700; color: white;
+            text-shadow: 0 10px 50px rgba(0,0,0,0.8); z-index: 20;
         }
 
-        /* กรอบรูป PNG ซ้อนทับด้านบน */
-        #frame-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none; /* เพื่อไม่ให้ขวางการทัช */
-            z-index: 10;
+        /* คำแนะนำด้านล่าง (แทนปุ่ม) */
+        .instruction-panel {
+            display: flex; justify-content: center; align-items: center; gap: 60px;
+            width: 960px; margin-top: 60px;
+            background-color: #222222; border-radius: 20px; padding: 40px 0;
+            border: 2px solid #333333;
         }
+        .instruction-item { text-align: center; font-size: 38px; }
+        .icon { font-size: 64px; margin-bottom: 10px; display: block; }
 
-        /* แผงควบคุมปุ่มกด */
-        .controls {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            width: 960px;
-            margin-top: 60px;
-        }
+        #canvas { display: none; }
 
-        /* สไตล์ปุ่มกดขนาดใหญ่ UX สำหรับจอทัชสกรีน */
-        button {
-            font-family: 'Chakra Petch', sans-serif;
-            font-size: 48px;
-            font-weight: 600;
-            border: none;
-            cursor: pointer;
-            border-radius: 20px;
-            transition: transform 0.1s, background-color 0.2s;
-        }
-        button:active {
-            transform: scale(0.95);
-        }
-
-        .btn-nav {
-            background-color: #333333;
-            color: white;
-            padding: 30px 60px;
-        }
-        .btn-nav:hover {
-            background-color: #444444;
-        }
-
-        .btn-capture {
-            background-color: #FF3D00;
-            color: white;
-            width: 180px;
-            height: 180px;
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            box-shadow: 0 8px 20px rgba(255, 61, 0, 0.4);
-            border: 8px solid #ffffff;
-            font-size: 80px;
-        }
-
-        /* ซ่อน Canvas ไว้ใช้ประมวลผลรวมภาพตอนหลัง */
-        #canvas {
-            display: none;
-        }
-
-        /* โซนแสดงผลลัพธ์และ QR Code */
+        /* โซนแสดงผลลัพธ์ */
         #result-screen {
-            display: none; 
-            position: absolute; 
-            top: 0; 
-            left: 0; 
-            width: 1080px; 
-            height: 1920px; 
-            background-color: rgba(18, 18, 18, 0.98); 
-            z-index: 100; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center;
+            display: none; position: absolute; top: 0; left: 0; 
+            width: 1080px; height: 1920px; background-color: rgba(18, 18, 18, 0.98); 
+            z-index: 100; flex-direction: column; align-items: center; justify-content: center;
+        }
+        
+        /* Popup แจ้งเตือนสถานะ AI */
+        #ai-status {
+            position: absolute; top: 20px; right: 20px;
+            background-color: #FF3D00; color: white; padding: 10px 20px;
+            border-radius: 10px; font-size: 24px; z-index: 50;
         }
     </style>
 </head>
 <body>
 
+    <div id="ai-status">⏳ กำลังโหลดระบบ AI...</div>
+
     <div class="header">
         <h1>SNAPSHOT STUDIO</h1>
-        <p>แตะเพื่อเปลี่ยนกรอบรูป และกดปุ่มวงกลมเพื่อถ่ายภาพ</p>
+        <p>ระบบตรวจจับท่าทางอัตโนมัติ (Touchless Kiosk)</p>
     </div>
 
     <div class="camera-container">
         <video id="webcam" autoplay playsinline></video>
         <img id="frame-overlay" src="frame1.png" alt="Frame Overlay">
+        
+        <div id="capture-countdown">5</div>
     </div>
 
-    <div class="controls">
-        <button class="btn-nav" id="btn-prev">◀ ก่อนหน้า</button>
-        <button class="btn-capture" id="btn-capture">📷</button>
-        <button class="btn-nav" id="btn-next">ถัดไป ▶</button>
+    <div class="instruction-panel">
+        <div class="instruction-item">
+            <span class="icon">👋</span>
+            ปัดซ้าย / ขวา<br><span style="color: #aaaaaa; font-size: 28px;">เพื่อเปลี่ยนกรอบรูป</span>
+        </div>
+        <div class="instruction-item">
+            <span class="icon">✌️</span>
+            ชู 2 นิ้ว ค้างไว้<br><span style="color: #00E5FF; font-size: 28px;">เพื่อเริ่มนับถอยหลังถ่ายภาพ</span>
+        </div>
     </div>
 
     <canvas id="canvas" width="960" height="1280"></canvas>
 
     <div id="result-screen">
         <h2 style="font-size: 64px; color: #00E5FF; margin-bottom: 30px; font-weight: 700;">สแกนเพื่อดาวน์โหลดภาพ!</h2>
-        
         <img id="final-image" style="width: 540px; height: 720px; object-fit: cover; border-radius: 20px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); margin-bottom: 50px;">
-        
-        <div id="qrcode-container" style="background: white; padding: 30px; border-radius: 20px; display: flex; align-items: center; justify-content: center; min-width: 300px; min-height: 300px;">
-            </div>
-        
+        <div id="qrcode-container" style="background: white; padding: 30px; border-radius: 20px; display: flex; align-items: center; justify-content: center; min-width: 300px; min-height: 300px;"></div>
         <p style="font-size: 36px; margin-top: 40px; color: #aaaaaa;">ระบบจะกลับสู่หน้าหลักใน <span id="countdown-text" style="color: #FF3D00; font-weight: bold;">15</span> วินาที</p>
-        
-        <button class="btn-nav" id="btn-restart" style="margin-top: 40px;">ถ่ายรูปใหม่ทันที</button>
     </div>
 
     <script type="module">
-        // 1. นำเข้า Firebase และตั้งค่า
+        // --- 1. การนำเข้า Firebase ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
+
+        // --- 2. การนำเข้า MediaPipe สำหรับ Hand Gesture ---
+        import { GestureRecognizer, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDMptdLpLEdbeVFKZj82M0gyoV2m_2y5Pk",
@@ -195,76 +128,163 @@
         const app = initializeApp(firebaseConfig);
         const storage = getStorage(app);
 
-        // 2. การจัดการกล้อง Webcam
+        // --- ตัวแปรจัดการ State ของระบบ ---
         const video = document.getElementById('webcam');
+        const frames = ['frame1.png', 'frame2.png', 'frame3.png']; 
+        let currentFrameIndex = 0;
+        const frameOverlay = document.getElementById('frame-overlay');
         
+        let gestureRecognizer;
+        let isCountingDown = false;
+        let lastVideoTime = -1;
+        let handPositionState = "center"; 
+        let gestureCooldown = 0;
+
+        // --- 3. เปิดกล้อง Webcam ---
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { 
-                        width: { ideal: 1080 },
-                        height: { ideal: 1920 },
-                        facingMode: "user" 
-                    }
+                    video: { width: { ideal: 1080 }, height: { ideal: 1920 }, facingMode: "user" }
                 });
                 video.srcObject = stream;
             } catch (err) {
                 console.error("ไม่สามารถเปิดกล้องได้: ", err);
-                alert("กรุณาอนุญาตการใช้งานกล้องและตรวจสอบการเชื่อมต่ออุปกรณ์");
             }
         }
-        initCamera();
 
-        // 3. การจัดการเปลี่ยนกรอบรูป
-        const frames = ['frame1.png', 'frame2.png', 'frame3.png']; 
-        let currentFrameIndex = 0;
-        const frameOverlay = document.getElementById('frame-overlay');
+        // --- 4. โหลด AI Model (MediaPipe) ---
+        async function createGestureRecognizer() {
+            const vision = await FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+            );
+            gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
+                    delegate: "GPU"
+                },
+                runningMode: "VIDEO",
+                numHands: 1 // ตรวจจับมือเดียวเพื่อป้องกันความสับสน
+            });
+            
+            document.getElementById('ai-status').innerText = "🟢 AI พร้อมใช้งานแล้ว";
+            setTimeout(() => { document.getElementById('ai-status').style.display = 'none'; }, 2000);
+            
+            // เริ่ม Loop ตรวจจับภาพ
+            predictWebcam();
+        }
 
-        document.getElementById('btn-prev').addEventListener('click', () => {
-            currentFrameIndex--;
+        // --- 5. Loop ตรวจจับท่าทางจากวีดีโอ ---
+        function predictWebcam() {
+            if (!gestureRecognizer) {
+                requestAnimationFrame(predictWebcam);
+                return;
+            }
+            if (video.currentTime !== lastVideoTime) {
+                lastVideoTime = video.currentTime;
+                const results = gestureRecognizer.recognizeForVideo(video, Date.now());
+                processGestures(results);
+            }
+            requestAnimationFrame(predictWebcam);
+        }
+
+        // --- 6. ตรรกะประมวลผลท่าทาง (Swipe & Victory) ---
+        function processGestures(results) {
+            const resultScreen = document.getElementById('result-screen');
+            // หากกำลังนับถอยหลัง หรือแสดงหน้าผลลัพธ์อยู่ ให้ข้ามการรับคำสั่ง
+            if (isCountingDown || resultScreen.style.display === 'flex') return;
+
+            if (results.landmarks.length > 0) {
+                const hand = results.landmarks[0];
+                const x = hand[0].x; // พิกัดแกน X ของข้อมือ (0.0 ฝั่งซ้าย - 1.0 ฝั่งขวาของภาพจริง)
+                
+                if (Date.now() > gestureCooldown) {
+                    
+                    // 1. ตรวจจับการปัดมือ (แบ่งโซน ซ้าย-กลาง-ขวา)
+                    // ภาพวีดีโอถูกกลับด้าน (Mirror) ดังนั้นฝั่งซ้ายของจอคือฝั่งขวาของภาพ
+                    if (x < 0.25) { 
+                        if (handPositionState === "right" || handPositionState === "center") {
+                            changeFrame(-1); 
+                            gestureCooldown = Date.now() + 1000; // ดีเลย์ 1 วิ กันเปลี่ยนรัวๆ
+                        }
+                        handPositionState = "left";
+                    } else if (x > 0.75) {
+                        if (handPositionState === "left" || handPositionState === "center") {
+                            changeFrame(1);
+                            gestureCooldown = Date.now() + 1000;
+                        }
+                        handPositionState = "right";
+                    } else if (x > 0.35 && x < 0.65) {
+                        handPositionState = "center"; // มือกลับมาตรงกลาง
+                    }
+
+                    // 2. ตรวจจับชู 2 นิ้ว (Victory)
+                    if (results.gestures.length > 0) {
+                        const categoryName = results.gestures[0][0].categoryName;
+                        if (categoryName === "Victory") {
+                            startCaptureCountdown();
+                        }
+                    }
+                }
+            }
+        }
+
+        function changeFrame(direction) {
+            currentFrameIndex += direction;
             if (currentFrameIndex < 0) currentFrameIndex = frames.length - 1;
-            frameOverlay.src = frames[currentFrameIndex];
-        });
-
-        document.getElementById('btn-next').addEventListener('click', () => {
-            currentFrameIndex++;
             if (currentFrameIndex >= frames.length) currentFrameIndex = 0;
             frameOverlay.src = frames[currentFrameIndex];
-        });
+        }
 
-        // 4. การจัดการถ่ายภาพและอัปโหลด
+        // --- 7. การนับถอยหลัง 5 วินาที ---
+        function startCaptureCountdown() {
+            isCountingDown = true;
+            let count = 5;
+            const countdownOverlay = document.getElementById('capture-countdown');
+            countdownOverlay.style.display = 'flex';
+            countdownOverlay.innerText = count;
+
+            const timer = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownOverlay.innerText = count;
+                } else {
+                    clearInterval(timer);
+                    countdownOverlay.style.display = 'none';
+                    takePhoto(); // เริ่มถ่ายภาพ
+                }
+            }, 1000);
+        }
+
+        // --- 8. ถ่ายภาพ, รวมเลเยอร์, อัปโหลด Firebase และ Gen QR ---
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const resultScreen = document.getElementById('result-screen');
         const finalImage = document.getElementById('final-image');
         const qrcodeContainer = document.getElementById('qrcode-container');
-        let countdownInterval;
+        let resetInterval;
 
-        document.getElementById('btn-capture').addEventListener('click', () => {
+        function takePhoto() {
             // เอฟเฟกต์แฟลช
             document.body.style.backgroundColor = "#ffffff";
             setTimeout(() => { document.body.style.backgroundColor = "#121212"; }, 100);
 
-            // วาดภาพจากกล้อง (กลับด้านภาพให้ถูกต้อง)
+            // วาดรูปลง Canvas
             ctx.save();
             ctx.translate(canvas.width, 0);
             ctx.scale(-1, 1);
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             ctx.restore();
 
-            // วาดกรอบรูปทับ
             const currentFrameImg = new Image();
             currentFrameImg.src = frames[currentFrameIndex];
             
             currentFrameImg.onload = () => {
                 ctx.drawImage(currentFrameImg, 0, 0, canvas.width, canvas.height);
                 
-                // แสดงหน้าผลลัพธ์ทันที
                 finalImage.src = canvas.toDataURL('image/png');
                 resultScreen.style.display = 'flex';
-                qrcodeContainer.innerHTML = '<h3 style="color: black; margin: 0;">กำลังประมวลผล...</h3>';
+                qrcodeContainer.innerHTML = '<h3 style="color: black; margin: 0;">กำลังอัปโหลด...</h3>';
                 
-                // แปลง Canvas เป็น Blob และอัปโหลด
                 canvas.toBlob(async (blob) => {
                     try {
                         const fileName = `photos/booth_${Date.now()}.png`;
@@ -273,51 +293,45 @@
                         await uploadBytes(storageRef, blob);
                         const downloadURL = await getDownloadURL(storageRef);
                         
-                        // สร้าง QR Code
                         qrcodeContainer.innerHTML = ''; 
                         new QRCode(qrcodeContainer, {
                             text: downloadURL,
-                            width: 300,
-                            height: 300,
-                            colorDark : "#000000",
-                            colorLight : "#ffffff",
+                            width: 300, height: 300,
+                            colorDark : "#000000", colorLight : "#ffffff",
                             correctLevel : QRCode.CorrectLevel.H
                         });
 
-                        // เริ่มนับถอยหลังกลับหน้าหลัก 15 วินาที
-                        startCountdown(15);
-
+                        startResetTimer(15);
                     } catch (error) {
                         console.error("อัปโหลดไม่สำเร็จ:", error);
                         qrcodeContainer.innerHTML = '<h3 style="color: red;">เกิดข้อผิดพลาด</h3>';
-                        startCountdown(5); // ถ้าระบบพัง ให้รอนิดนึงแล้วกลับหน้าหลัก
+                        startResetTimer(5);
                     }
                 }, 'image/png');
             };
-        });
+        }
 
-        // 5. ฟังก์ชันนับถอยหลังและรีเซ็ต
-        function startCountdown(seconds) {
+        // --- 9. รีเซ็ตกลับสู่หน้าหลัก ---
+        function startResetTimer(seconds) {
             let timeLeft = seconds;
             document.getElementById('countdown-text').innerText = timeLeft;
             
-            countdownInterval = setInterval(() => {
+            resetInterval = setInterval(() => {
                 timeLeft--;
                 document.getElementById('countdown-text').innerText = timeLeft;
                 if (timeLeft <= 0) {
-                    resetKiosk();
+                    clearInterval(resetInterval);
+                    resultScreen.style.display = 'none'; 
+                    qrcodeContainer.innerHTML = '';
+                    isCountingDown = false; // ปลดล็อคให้รับท่าทางใหม่ได้
                 }
             }, 1000);
         }
 
-        function resetKiosk() {
-            clearInterval(countdownInterval);
-            resultScreen.style.display = 'none'; 
-            qrcodeContainer.innerHTML = '';      
-        }
-
-        // ปุ่มถ่ายรูปใหม่ทันที
-        document.getElementById('btn-restart').addEventListener('click', resetKiosk);
+        // --- เริ่มต้นการทำงาน ---
+        initCamera().then(() => {
+            createGestureRecognizer();
+        });
 
     </script>
 </body>
