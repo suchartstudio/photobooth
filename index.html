@@ -38,7 +38,6 @@
             will-change: transform;
         }
 
-        /* Canvas สำหรับวาดเส้น ตัดขอบให้พอดีกับวีดีโอกล้อง */
         #output_canvas {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             z-index: 5; pointer-events: none; 
@@ -68,7 +67,6 @@
         .instruction-item { text-align: center; font-size: 38px; }
         .icon { font-size: 64px; margin-bottom: 10px; display: block; }
 
-        /* Canvas ซ่อนไว้ใช้รวมภาพถ่าย */
         #canvas { display: none; }
 
         #result-screen {
@@ -144,7 +142,6 @@
         let currentFrameIndex = 0;
         const frameOverlay = document.getElementById('frame-overlay');
         
-        // Setup สำหรับวาดเส้น AI
         const outputCanvas = document.getElementById('output_canvas');
         const canvasCtx = outputCanvas.getContext('2d');
         let drawingUtils;
@@ -173,7 +170,6 @@
             clearInterval(autoSlideTimer);
         }
 
-        // เปิดกล้องและตั้งขนาด Canvas วาดเส้นให้พอดีกล้อง
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -181,7 +177,6 @@
                 });
                 video.srcObject = stream;
                 
-                // อัปเดตขนาด Canvas เมื่อภาพวีดีโอโหลดมาแล้ว
                 video.addEventListener('loadeddata', () => {
                     outputCanvas.width = video.videoWidth;
                     outputCanvas.height = video.videoHeight;
@@ -225,11 +220,11 @@
                 let startTimeMs = performance.now();
                 const results = gestureRecognizer.recognizeForVideo(video, startTimeMs);
                 
-                // วาดเส้นลงบนหน้าจอ
                 canvasCtx.save();
                 canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
                 
-                if (!isCountingDown && document.getElementById('result-screen').style.display !== 'flex') {
+                // แก้ไข: ให้โชว์เส้นตลอด ยกเว้นตอนแสดงหน้าผลลัพธ์ (ถึงจะนับถอยหลังอยู่ก็โชว์เส้น)
+                if (document.getElementById('result-screen').style.display !== 'flex') {
                     if (results.landmarks && results.landmarks.length > 0) {
                         for (const landmarks of results.landmarks) {
                             drawingUtils.drawConnectors(landmarks, GestureRecognizer.HAND_CONNECTIONS, {
@@ -297,7 +292,7 @@
             isCountingDown = true;
             stopAutoSlide(); 
             
-            canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+            // ลบคำสั่งล้างเส้นตรงนี้ออก เพื่อให้เส้นยังคงวาดต่อไปตามมือ
             
             let count = 5;
             const countdownOverlay = document.getElementById('capture-countdown');
@@ -324,6 +319,9 @@
         let resetInterval;
 
         function takePhoto() {
+            // ล้างหน้าจอเส้น Skeleton สีฟ้าทิ้งทันทีตอนกดชัตเตอร์ จะได้ไม่รบกวนหน้าผลลัพธ์
+            canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+            
             document.body.style.backgroundColor = "#ffffff";
             setTimeout(() => { document.body.style.backgroundColor = "#121212"; }, 100);
 
