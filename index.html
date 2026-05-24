@@ -32,7 +32,13 @@
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
         }
 
-        #webcam { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        /* เปิดใช้ GPU Acceleration เพื่อเร่งความเร็วการแสดงผลวิดีโอ */
+        #webcam { 
+            width: 100%; height: 100%; object-fit: cover; 
+            transform: scaleX(-1) translateZ(0); 
+            will-change: transform;
+        }
+        
         #frame-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
 
         /* ตัวเลขนับถอยหลังกลางจอ */
@@ -43,7 +49,7 @@
             text-shadow: 0 10px 50px rgba(0,0,0,0.8); z-index: 20;
         }
 
-        /* คำแนะนำด้านล่าง (แทนปุ่ม) */
+        /* คำแนะนำด้านล่าง */
         .instruction-panel {
             display: flex; justify-content: center; align-items: center; gap: 60px;
             width: 960px; margin-top: 60px;
@@ -139,12 +145,18 @@
         let lastVideoTime = -1;
         let handPositionState = "center"; 
         let gestureCooldown = 0;
+        let isPredicting = false; // ป้องกันการคำนวณ AI ซ้อนทับกัน
 
-        // --- 3. เปิดกล้อง Webcam ---
+        // --- 3. เปิดกล้อง Webcam (บังคับ Frame Rate ให้สูง) ---
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: { ideal: 1080 }, height: { ideal: 1920 }, facingMode: "user" }
+                    video: { 
+                        width: { ideal: 1080 }, 
+                        height: { ideal: 1920 }, 
+                        facingMode: "user",
+                        frameRate: { ideal: 30, max: 60 } // บังคับให้กล้องส่งภาพมาลื่นที่สุด
+                    }
                 });
                 video.srcObject = stream;
             } catch (err) {
@@ -160,10 +172,10 @@
             gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
                 baseOptions: {
                     modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
-                    delegate: "GPU"
+                    delegate: "GPU" // ใช้การ์ดจอช่วยประมวลผล AI
                 },
                 runningMode: "VIDEO",
-                numHands: 1 // ตรวจจับมือเดียวเพื่อป้องกันความสับสน
+                numHands: 1 // จับมือเดียวเพื่อลดการทำงานของเครื่อง
             });
             
             document.getElementById('ai-status').innerText = "🟢 AI พร้อมใช้งานแล้ว";
@@ -173,17 +185,26 @@
             predictWebcam();
         }
 
-        // --- 5. Loop ตรวจจับท่าทางจากวีดีโอ ---
+        // --- 5. Loop ตรวจจับท่าทางจากวีดีโอ (ปรับปรุงประสิทธิภาพ) ---
         function predictWebcam() {
             if (!gestureRecognizer) {
                 requestAnimationFrame(predictWebcam);
                 return;
             }
-            if (video.currentTime !== lastVideoTime) {
+            
+            // ให้ AI ทำงานเฉพาะตอนที่เฟรมใหม่มา และไม่ได้ค้างคำนวณอยู่
+            if (video.currentTime !== lastVideoTime && !isPredicting) {
+                isPredicting = true;
                 lastVideoTime = video.currentTime;
-                const results = gestureRecognizer.recognizeForVideo(video, Date.now());
+                
+                // ใช้ performance.now() ตามที่ MediaPipe แนะนำเพื่อความแม่นยำ
+                let startTimeMs = performance.now();
+                const results = gestureRecognizer.recognizeForVideo(video, startTimeMs);
                 processGestures(results);
+                
+                isPredicting = false;
             }
+            
             requestAnimationFrame(predictWebcam);
         }
 
@@ -195,16 +216,15 @@
 
             if (results.landmarks.length > 0) {
                 const hand = results.landmarks[0];
-                const x = hand[0].x; // พิกัดแกน X ของข้อมือ (0.0 ฝั่งซ้าย - 1.0 ฝั่งขวาของภาพจริง)
+                const x = hand[0].x; 
                 
                 if (Date.now() > gestureCooldown) {
                     
                     // 1. ตรวจจับการปัดมือ (แบ่งโซน ซ้าย-กลาง-ขวา)
-                    // ภาพวีดีโอถูกกลับด้าน (Mirror) ดังนั้นฝั่งซ้ายของจอคือฝั่งขวาของภาพ
                     if (x < 0.25) { 
                         if (handPositionState === "right" || handPositionState === "center") {
                             changeFrame(-1); 
-                            gestureCooldown = Date.now() + 1000; // ดีเลย์ 1 วิ กันเปลี่ยนรัวๆ
+                            gestureCooldown = Date.now() + 1000; 
                         }
                         handPositionState = "left";
                     } else if (x > 0.75) {
@@ -214,7 +234,7 @@
                         }
                         handPositionState = "right";
                     } else if (x > 0.35 && x < 0.65) {
-                        handPositionState = "center"; // มือกลับมาตรงกลาง
+                        handPositionState = "center"; 
                     }
 
                     // 2. ตรวจจับชู 2 นิ้ว (Victory)
@@ -250,7 +270,7 @@
                 } else {
                     clearInterval(timer);
                     countdownOverlay.style.display = 'none';
-                    takePhoto(); // เริ่มถ่ายภาพ
+                    takePhoto(); 
                 }
             }, 1000);
         }
