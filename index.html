@@ -48,7 +48,6 @@
         #frame-overlay { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             pointer-events: none; z-index: 10;
-            /* ปรับความนุ่มนวลเวลาเปลี่ยนภาพให้ค่อยๆ เฟด */
             transition: opacity 0.5s ease-in-out;
         }
 
@@ -81,11 +80,26 @@
             background-color: #FF3D00; color: white; padding: 10px 20px;
             border-radius: 10px; font-size: 24px; z-index: 50;
         }
+
+        /* ปุ่มบังคับเริ่มเสียงเพลงตอนเปิดเครื่อง */
+        #audio-start-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.8); z-index: 200;
+            display: flex; justify-content: center; align-items: center; flex-direction: column;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
 
-    <div id="ai-status">⏳ กำลังโหลดระบบ AI...</div>
+    <audio id="bg-music" src="music.mp3" loop></audio>
+
+    <div id="audio-start-overlay">
+        <h1 style="font-size: 80px; color: #00E5FF;">แตะหน้าจอ 1 ครั้ง</h1>
+        <p style="font-size: 40px; color: white;">เพื่อเปิดระบบและเสียงเพลงประกอบ</p>
+    </div>
+
+    <div id="ai-status">⏳ กำลังโหลดระบบ...</div>
 
     <div class="header">
         <h1>SNAPSHOT STUDIO</h1>
@@ -95,7 +109,7 @@
     <div class="camera-container">
         <video id="webcam" autoplay playsinline></video>
         <canvas id="output_canvas"></canvas>
-        <img id="frame-overlay" src="frame1.png" alt="Frame Overlay">
+        <img id="frame-overlay" src="" alt="Frame Overlay">
         <div id="capture-countdown">5</div>
     </div>
 
@@ -131,18 +145,54 @@
             projectId: "suchartstudio-9a78d",
             storageBucket: "suchartstudio-9a78d.firebasestorage.app",
             messagingSenderId: "953369646185",
-            appId: "1:953369646185:web:99057e30888de3566ebef8",
-            measurementId: "G-NECPG05SFT"
+            appId: "1:953369646185:web:99057e30888de3566ebef8"
         };
 
         const app = initializeApp(firebaseConfig);
         const storage = getStorage(app);
 
+        // --- 1. ระบบจัดการเสียงเพลง ---
+        const bgMusic = document.getElementById('bg-music');
+        bgMusic.volume = 0.5; // ปรับความดัง 50%
+        document.getElementById('audio-start-overlay').addEventListener('click', function() {
+            bgMusic.play().catch(e => console.log("ไม่สามารถเล่นเสียงได้:", e));
+            this.style.display = 'none'; // ซ่อนหน้าแตะเมื่อคลิกแล้ว
+        });
+
+        // --- 2. ระบบดึงไฟล์กรอบรูป 1-10 แบบอัตโนมัติ ---
         const video = document.getElementById('webcam');
-        const frames = ['frame1.png', 'frame2.png', 'frame3.png']; 
+        let frames = []; 
         let currentFrameIndex = 0;
         const frameOverlay = document.getElementById('frame-overlay');
         
+        async function preloadFrames() {
+            const maxFrames = 10;
+            const validFrames = [];
+            
+            // เช็คว่ามีไฟล์ frame1 ถึง frame10 อยู่จริงไหม
+            for (let i = 1; i <= maxFrames; i++) {
+                const imgName = `frame${i}.png`;
+                const exists = await new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => resolve(true);
+                    img.onerror = () => resolve(false);
+                    img.src = imgName;
+                });
+                
+                if (exists) validFrames.push(imgName);
+            }
+
+            if (validFrames.length > 0) {
+                frames = validFrames;
+                frameOverlay.src = frames[0];
+                console.log("กรอบรูปที่ใช้งานได้:", frames);
+            } else {
+                console.error("ไม่พบไฟล์กรอบรูปเลย!");
+                frames = ['frame1.png']; // Fallback
+            }
+        }
+
+        // --- ตัวแปร AI และ State ---
         const outputCanvas = document.getElementById('output_canvas');
         const canvasCtx = outputCanvas.getContext('2d');
         let drawingUtils;
@@ -154,11 +204,11 @@
         let gestureCooldown = 0;
         let isPredicting = false; 
 
-        // --- อัปเดตระบบ Auto Slide & Idle Timer ---
+        // Auto Slide
         let autoSlideTimer;
         let userIdleTimer;
-        const AUTO_SLIDE_INTERVAL = 6000; // เปลี่ยนรูปทุก 6 วินาทีตอนไม่มีคน
-        const IDLE_TIMEOUT = 10000;       // ถ้าไม่เจอมือคน 10 วินาที ให้กลับไป Auto-slide
+        const AUTO_SLIDE_INTERVAL = 6000; 
+        const IDLE_TIMEOUT = 10000;       
 
         function startAutoSlide() {
             clearInterval(autoSlideTimer);
@@ -173,12 +223,9 @@
             clearInterval(autoSlideTimer);
         }
 
-        // ฟังก์ชันจัดการเมื่อเจอคนหน้ากล้อง
         function handleUserPresence() {
-            stopAutoSlide(); // หยุดเปลี่ยนรูปทันที
-            clearTimeout(userIdleTimer); // รีเซ็ตเวลารอคนหาย
-            
-            // เริ่มนับเวลาใหม่ ถ้าครบ 10 วิไม่มีความเคลื่อนไหว ให้เริ่ม Auto-slide ใหม่
+            stopAutoSlide(); 
+            clearTimeout(userIdleTimer);
             userIdleTimer = setTimeout(() => {
                 startAutoSlide();
             }, IDLE_TIMEOUT);
@@ -216,7 +263,7 @@
             
             drawingUtils = new DrawingUtils(canvasCtx);
             
-            document.getElementById('ai-status').innerText = "🟢 AI พร้อมใช้งานแล้ว";
+            document.getElementById('ai-status').innerText = "🟢 พร้อมใช้งานแล้ว";
             setTimeout(() => { document.getElementById('ai-status').style.display = 'none'; }, 2000);
             
             predictWebcam();
@@ -240,7 +287,7 @@
                 if (document.getElementById('result-screen').style.display !== 'flex') {
                     if (results.landmarks && results.landmarks.length > 0) {
                         
-                        handleUserPresence(); // แจ้งระบบว่า "มีคนอยู่หน้ากล้องนะ หยุด Auto-slide ได้เลย"
+                        handleUserPresence(); 
 
                         for (const landmarks of results.landmarks) {
                             drawingUtils.drawConnectors(landmarks, GestureRecognizer.HAND_CONNECTIONS, {
@@ -271,16 +318,15 @@
                 
                 if (Date.now() > gestureCooldown) {
                     
-                    // --- อัปเดตโซนความแม่นยำของการปัดมือ ---
-                    const LEFT_ZONE = 0.35;   // ปัดผ่าน 35% ของจอถือว่าไปซ้ายแล้ว (ไม่ต้องปัดสุดแขน)
-                    const RIGHT_ZONE = 0.65;  // ปัดผ่าน 65% ของจอถือว่าไปขวาแล้ว
-                    const CENTER_MIN = 0.45;  // โซนตรงกลางสำหรับ Reset ค่า
+                    const LEFT_ZONE = 0.35;   
+                    const RIGHT_ZONE = 0.65;  
+                    const CENTER_MIN = 0.45;  
                     const CENTER_MAX = 0.55;
 
                     if (x < LEFT_ZONE) { 
                         if (handPositionState === "right" || handPositionState === "center") {
                             changeFrame(-1); 
-                            gestureCooldown = Date.now() + 1500; // ป้องกันปัดติดเบิ้ล 1.5 วินาที
+                            gestureCooldown = Date.now() + 1500; 
                         }
                         handPositionState = "left";
                     } else if (x > RIGHT_ZONE) {
@@ -290,7 +336,6 @@
                         }
                         handPositionState = "right";
                     } else if (x > CENTER_MIN && x < CENTER_MAX) {
-                        // ต้องดึงมือกลับมาไว้ช่วงตรงกลางจอก่อน ถึงจะพร้อมรับการปัดครั้งใหม่
                         handPositionState = "center"; 
                     }
 
@@ -305,16 +350,17 @@
         }
 
         function changeFrame(direction) {
+            if (frames.length === 0) return; // กันพังถ้าไม่มีเฟรม
+
             currentFrameIndex += direction;
             if (currentFrameIndex < 0) currentFrameIndex = frames.length - 1;
             if (currentFrameIndex >= frames.length) currentFrameIndex = 0;
             
-            // เพิ่มเอฟเฟกต์เฟดภาพแบบนุ่มนวล
             frameOverlay.style.opacity = 0;
             setTimeout(() => {
                 frameOverlay.src = frames[currentFrameIndex];
                 frameOverlay.style.opacity = 1;
-            }, 300); // ดีเลย์ตาม opacity transition
+            }, 300); 
         }
 
         function startCaptureCountdown() {
@@ -407,15 +453,17 @@
                     qrcodeContainer.innerHTML = '';
                     
                     isCountingDown = false;
-                    // เมื่อจบ Process ให้เริ่มรอคนใหม่ ถ้าไม่มีใคร 10 วิ ก็เริ่ม Slide
                     handleUserPresence(); 
                 }
             }, 1000);
         }
 
-        initCamera().then(() => {
-            createGestureRecognizer();
-            startAutoSlide(); 
+        // โหลดข้อมูลให้พร้อมก่อนเปิดกล้องและเริ่ม AI
+        preloadFrames().then(() => {
+            initCamera().then(() => {
+                createGestureRecognizer();
+                startAutoSlide(); 
+            });
         });
 
     </script>
