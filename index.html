@@ -9,7 +9,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <link rel="icon" href="data:,"> <style>
+    <link rel="icon" href="data:,"> <!-- แก้ปัญหา favicon 404 -->
+
+    <style>
         body { margin: 0; padding: 0; width: 1080px; height: 1920px; background-color: #121212; color: #ffffff; font-family: 'Chakra Petch', sans-serif; display: flex; flex-direction: column; align-items: center; overflow: hidden; position: relative; }
         .header { margin-top: 60px; text-align: center; }
         .header h1 { font-size: 80px; margin: 0; font-weight: 700; color: #00E5FF; }
@@ -25,7 +27,8 @@
         
         #capture-countdown { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; justify-content: center; align-items: center; font-size: 400px; font-weight: 700; color: white; text-shadow: 0 10px 50px rgba(0,0,0,0.8); z-index: 20; }
 
-        .instruction-panel { display: flex; justify-content: space-evenly; align-items: center; width: 960px; margin-top: 50px; background-color: #222222; border-radius: 20px; padding: 30px 0; border: 2px solid #333333; }
+        /* ปรับกลับมาเป็น 2 คำสั่ง */
+        .instruction-panel { display: flex; justify-content: center; align-items: center; gap: 100px; width: 960px; margin-top: 50px; background-color: #222222; border-radius: 20px; padding: 30px 0; border: 2px solid #333333; }
         .instruction-item { text-align: center; font-size: 32px; }
         .icon { font-size: 64px; margin-bottom: 5px; display: block; }
         
@@ -52,7 +55,7 @@
 
     <div class="header">
         <h1>SNAPSHOT STUDIO</h1>
-        <p>ชูสองนิ้ว 3 2 1 .. ถ่ายภาพ สแกน QR แล้วแชร์</p>
+        <p>ระบบตรวจจับท่าทางและ AR ฟิลเตอร์</p>
     </div>
 
     <div class="camera-container">
@@ -70,9 +73,6 @@
             <span class="icon">👋</span> ปัดซ้าย / ขวา<br><span style="color: #aaaaaa; font-size: 24px;">เปลี่ยนกรอบรูป</span>
         </div>
         <div class="instruction-item">
-            <span class="icon">👌</span> ท่า OK (ค้าง 3 วิ)<br><span style="color: #aaaaaa; font-size: 24px;">เปิด/ปิด AR โหมด</span>
-        </div>
-        <div class="instruction-item">
             <span class="icon">✌️</span> ชู 2 นิ้ว<br><span style="color: #00E5FF; font-size: 24px;">เพื่อถ่ายภาพ</span>
         </div>
     </div>
@@ -88,7 +88,8 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
-        import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
+        // ลบคำสั่ง set ออก เพราะตอนนี้ตู้ Kiosk จะเป็นผู้รับคำสั่ง (Listener) อย่างเดียว
+        import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
         import { GestureRecognizer, FaceLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs";
 
         const firebaseConfig = {
@@ -173,11 +174,6 @@
         let handPositionState = "center"; 
         let gestureCooldown = 0;
         let isPredicting = false; 
-
-        // --- ตัวแปรสำหรับจับเวลาท่า OK ---
-        let arToggleCooldown = 0; 
-        let isOkHolding = false;
-        let okGestureStartTime = 0;
 
         let autoSlideTimer;
         let userIdleTimer;
@@ -320,57 +316,6 @@
                 const hand = results.landmarks[0];
                 const x = hand[0].x; 
                 
-                // --- ท่าทาง OK (นิ้วโป้งชนนิ้วชี้) เช็คหน่วงเวลา 3 วินาที ---
-                if (Date.now() > arToggleCooldown) {
-                    const thumbTip = hand[4];  // ปลายนิ้วโป้ง
-                    const indexTip = hand[8];  // ปลายนิ้วชี้
-                    const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
-                    
-                    // ถ้าระยะห่างจีบนิ้วน้อยกว่า 5%
-                    if (pinchDist < 0.05) { 
-                        if (!isOkHolding) {
-                            // เพิ่งเริ่มทำท่า OK
-                            isOkHolding = true;
-                            okGestureStartTime = Date.now();
-                            aiStatus.style.display = 'block';
-                            aiStatus.style.backgroundColor = "#555555";
-                            aiStatus.style.color = "#FFF";
-                            aiStatus.innerText = "⏳ ค้างไว้ 3 วินาทีเพื่อสลับ AR...";
-                        } else {
-                            // ทำท่า OK ค้างไว้อยู่ (เช็คว่าครบ 3 วิ หรือยัง)
-                            const holdTime = Date.now() - okGestureStartTime;
-                            
-                            if (holdTime >= 3000) {
-                                // ครบ 3 วินาที สลับโหมดทันที!
-                                const newState = !isAREnabled;
-                                set(ref(db, 'kiosk_settings/ar_enabled'), newState); // อัปเดตขึ้น Firebase
-                                
-                                aiStatus.innerText = newState ? "🟢 โหมด AR: เปิด" : "🔴 โหมด AR: ปิด";
-                                aiStatus.style.backgroundColor = newState ? "#00E5FF" : "#FF3D00";
-                                aiStatus.style.color = newState ? "#000" : "#FFF";
-
-                                arToggleCooldown = Date.now() + 3000; // ล็อคไม่ให้สลับเบิ้ล 3 วินาที
-                                isOkHolding = false;
-                                
-                                // ปิดป้ายแจ้งเตือนหลังจากผ่านไป 2 วินาที
-                                setTimeout(() => { 
-                                    if(Date.now() > arToggleCooldown - 1500) aiStatus.style.display = 'none'; 
-                                }, 2000);
-                            } else {
-                                // ยังไม่ครบ 3 วิ อัปเดตตัวเลขนับถอยหลัง
-                                const timeLeft = Math.ceil((3000 - holdTime) / 1000);
-                                aiStatus.innerText = `⏳ ค้างไว้ ${timeLeft} วินาทีเพื่อสลับ AR...`;
-                            }
-                        }
-                    } else {
-                        // ปล่อยมือหรือหลุดจากท่า OK (ยกเลิกการนับเวลา)
-                        if (isOkHolding) {
-                            isOkHolding = false;
-                            aiStatus.style.display = 'none';
-                        }
-                    }
-                }
-
                 // --- ควบคุมการปัดซ้าย/ขวา ---
                 if (Date.now() > gestureCooldown) {
                     if (x < 0.35) { 
@@ -381,15 +326,10 @@
                         handPositionState = "right";
                     } else if (x > 0.45 && x < 0.55) { handPositionState = "center"; }
 
+                    // ควบคุมการถ่ายรูปด้วยการชู 2 นิ้ว
                     if (results.gestures.length > 0 && results.gestures[0][0].categoryName === "Victory") {
                         startCaptureCountdown();
                     }
-                }
-            } else {
-                // ถ้า AI มองไม่เห็นมือเลย (มือตกขอบจอ) ให้ยกเลิกการนับเวลา OK
-                if (isOkHolding) {
-                    isOkHolding = false;
-                    aiStatus.style.display = 'none';
                 }
             }
         }
@@ -410,10 +350,6 @@
         }
 
         function startCaptureCountdown() {
-            // ยกเลิก UI แจ้งเตือนของท่า OK ก่อนเริ่มนับถอยหลังถ่ายรูป
-            isOkHolding = false;
-            aiStatus.style.display = 'none';
-
             isCountingDown = true;
             stopAutoSlide(); clearTimeout(userIdleTimer);
             
