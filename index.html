@@ -3,124 +3,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Photo Booth Kiosk</title>
+    <title>AI Photo Booth - AR Props & Cloudinary</title>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
-    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
     <style>
-        body {
-            margin: 0; padding: 0;
-            width: 1080px; height: 1920px;
-            background-color: #121212; color: #ffffff;
-            font-family: 'Chakra Petch', sans-serif;
-            display: flex; flex-direction: column; align-items: center;
-            overflow: hidden; position: relative;
-        }
-
+        body { margin: 0; padding: 0; width: 1080px; height: 1920px; background-color: #121212; color: #ffffff; font-family: 'Chakra Petch', sans-serif; display: flex; flex-direction: column; align-items: center; overflow: hidden; position: relative; }
         .header { margin-top: 60px; text-align: center; }
         .header h1 { font-size: 80px; margin: 0; font-weight: 700; color: #00E5FF; }
         .header p { font-size: 36px; margin: 10px 0 0 0; color: #aaaaaa; }
-
-        .camera-container {
-            position: relative; width: 960px; height: 1280px;
-            margin-top: 50px; background-color: #000000;
-            border-radius: 30px; overflow: hidden;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-        }
-
-        #webcam { 
-            width: 100%; height: 100%; object-fit: cover; 
-            transform: scaleX(-1) translateZ(0); 
-            will-change: transform;
-        }
-
-        #output_canvas {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 5; pointer-events: none; 
-            transform: scaleX(-1); 
-            object-fit: cover; 
-        }
+        .camera-container { position: relative; width: 960px; height: 1280px; margin-top: 50px; background-color: #000000; border-radius: 30px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
         
-        #frame-overlay { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            pointer-events: none; z-index: 10;
-            transition: opacity 0.5s ease-in-out;
-        }
+        #webcam { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1) translateZ(0); will-change: transform; }
+        #output_canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; transform: scaleX(-1); object-fit: cover; }
+        #frame-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; transition: opacity 0.5s ease-in-out; }
+        #capture-countdown { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; justify-content: center; align-items: center; font-size: 400px; font-weight: 700; color: white; text-shadow: 0 10px 50px rgba(0,0,0,0.8); z-index: 20; }
 
-        #capture-countdown {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            display: none; justify-content: center; align-items: center;
-            font-size: 400px; font-weight: 700; color: white;
-            text-shadow: 0 10px 50px rgba(0,0,0,0.8); z-index: 20;
-        }
-
-        .instruction-panel {
-            display: flex; justify-content: center; align-items: center; gap: 60px;
-            width: 960px; margin-top: 60px;
-            background-color: #222222; border-radius: 20px; padding: 40px 0;
-            border: 2px solid #333333;
-        }
+        .instruction-panel { display: flex; justify-content: center; align-items: center; gap: 60px; width: 960px; margin-top: 60px; background-color: #222222; border-radius: 20px; padding: 40px 0; border: 2px solid #333333; }
         .instruction-item { text-align: center; font-size: 38px; }
         .icon { font-size: 64px; margin-bottom: 10px; display: block; }
-
-        #canvas { display: none; }
-
-        #result-screen {
-            display: none; position: absolute; top: 0; left: 0; 
-            width: 1080px; height: 1920px; background-color: rgba(18, 18, 18, 0.98); 
-            z-index: 100; flex-direction: column; align-items: center; justify-content: center;
-        }
         
-        #ai-status {
-            position: absolute; top: 20px; right: 20px;
-            background-color: #FF3D00; color: white; padding: 10px 20px;
-            border-radius: 10px; font-size: 24px; z-index: 50;
-        }
-
-        /* ปุ่มบังคับเริ่มเสียงเพลงตอนเปิดเครื่อง */
-        #audio-start-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background-color: rgba(0,0,0,0.8); z-index: 200;
-            display: flex; justify-content: center; align-items: center; flex-direction: column;
-            cursor: pointer;
-        }
+        #canvas { display: none; }
+        #result-screen { display: none; position: absolute; top: 0; left: 0; width: 1080px; height: 1920px; background-color: rgba(18, 18, 18, 0.98); z-index: 100; flex-direction: column; align-items: center; justify-content: center; }
+        #ai-status { position: absolute; top: 20px; right: 20px; background-color: #FF3D00; color: white; padding: 10px 20px; border-radius: 10px; font-size: 24px; z-index: 50; }
+        #audio-start-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); z-index: 200; display: flex; justify-content: center; align-items: center; flex-direction: column; cursor: pointer; }
     </style>
 </head>
 <body>
+    
+    <img id="prop-glasses" src="glasses.png" style="display: none;" crossorigin="anonymous">
+    <img id="prop-hat" src="hat.png" style="display: none;" crossorigin="anonymous">
 
     <audio id="bg-music" src="music.mp3" loop></audio>
 
     <div id="audio-start-overlay">
         <h1 style="font-size: 80px; color: #00E5FF;">แตะหน้าจอ 1 ครั้ง</h1>
-        <p style="font-size: 40px; color: white;">เพื่อเปิดระบบและเสียงเพลงประกอบ</p>
+        <p style="font-size: 40px; color: white;">เพื่อเปิดระบบภาพและเสียง</p>
     </div>
 
-    <div id="ai-status">⏳ กำลังโหลดระบบ...</div>
+    <div id="ai-status">⏳ กำลังเชื่อมต่อระบบควบคุม...</div>
 
     <div class="header">
         <h1>SNAPSHOT STUDIO</h1>
-        <p>ระบบตรวจจับท่าทางอัตโนมัติ (Touchless Kiosk)</p>
+        <p>ระบบตรวจจับท่าทางและ AR ฟิลเตอร์</p>
     </div>
 
     <div class="camera-container">
         <video id="webcam" autoplay playsinline></video>
         <canvas id="output_canvas"></canvas>
-        <img id="frame-overlay" src="" alt="Frame Overlay">
+        <img id="frame-overlay" src="" alt="Frame Overlay" crossorigin="anonymous">
         <div id="capture-countdown">5</div>
     </div>
 
     <div class="instruction-panel">
         <div class="instruction-item">
-            <span class="icon">👋</span>
-            ปัดซ้าย / ขวา<br><span style="color: #aaaaaa; font-size: 28px;">เพื่อเปลี่ยนกรอบรูป</span>
+            <span class="icon">👋</span> ปัดซ้าย / ขวา<br><span style="color: #aaaaaa; font-size: 28px;">เพื่อเปลี่ยนกรอบรูป</span>
         </div>
         <div class="instruction-item">
-            <span class="icon">✌️</span>
-            ชู 2 นิ้ว ค้างไว้<br><span style="color: #00E5FF; font-size: 28px;">เพื่อเริ่มนับถอยหลังถ่ายภาพ</span>
+            <span class="icon">✌️</span> ชู 2 นิ้ว<br><span style="color: #00E5FF; font-size: 28px;">เพื่อถ่ายภาพ</span>
         </div>
     </div>
 
@@ -130,81 +73,85 @@
         <h2 style="font-size: 64px; color: #00E5FF; margin-bottom: 30px; font-weight: 700;">สแกนเพื่อดาวน์โหลดภาพ!</h2>
         <img id="final-image" style="width: 540px; height: 720px; object-fit: cover; border-radius: 20px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); margin-bottom: 50px;">
         <div id="qrcode-container" style="background: white; padding: 30px; border-radius: 20px; display: flex; align-items: center; justify-content: center; min-width: 300px; min-height: 300px;"></div>
-        <p style="font-size: 36px; margin-top: 40px; color: #aaaaaa;">ระบบจะกลับสู่หน้าหลักใน <span id="countdown-text" style="color: #FF3D00; font-weight: bold;">15</span> วินาที</p>
+        <p style="font-size: 36px; margin-top: 40px; color: #aaaaaa;">รอ <span id="countdown-text" style="color: #FF3D00; font-weight: bold;">15</span> วินาที</p>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
-        import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
-        import { GestureRecognizer, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs";
+        // เปลี่ยนมาใช้แค่ Realtime Database เพื่อซิงก์ข้อมูลเท่านั้น
+        import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
+        import { GestureRecognizer, FaceLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs";
 
+        // --- ตั้งค่า Firebase & Cloudinary ---
         const firebaseConfig = {
             apiKey: "AIzaSyDMptdLpLEdbeVFKZj82M0gyoV2m_2y5Pk",
             authDomain: "suchartstudio-9a78d.firebaseapp.com",
             databaseURL: "https://suchartstudio-9a78d-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "suchartstudio-9a78d",
-            storageBucket: "suchartstudio-9a78d.firebasestorage.app",
-            messagingSenderId: "953369646185",
-            appId: "1:953369646185:web:99057e30888de3566ebef8"
+            projectId: "suchartstudio-9a78d"
         };
-
         const app = initializeApp(firebaseConfig);
-        const storage = getStorage(app);
+        const db = getDatabase(app);
 
-        // --- 1. ระบบจัดการเสียงเพลง ---
-        const bgMusic = document.getElementById('bg-music');
-        bgMusic.volume = 0.5; // ปรับความดัง 50%
-        document.getElementById('audio-start-overlay').addEventListener('click', function() {
-            bgMusic.play().catch(e => console.log("ไม่สามารถเล่นเสียงได้:", e));
-            this.style.display = 'none'; // ซ่อนหน้าแตะเมื่อคลิกแล้ว
-        });
+        const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dk0ypev4m/image/upload";
+        const UPLOAD_PRESET = "khonkaen_preset";
 
-        // --- 2. ระบบดึงไฟล์กรอบรูป 1-10 แบบอัตโนมัติ ---
-        const video = document.getElementById('webcam');
+        // --- State Management ---
+        let isAREnabled = true; // รับคำสั่งจาก Control Panel
         let frames = []; 
         let currentFrameIndex = 0;
+        let currentPropMode = 1; 
+
+        const bgMusic = document.getElementById('bg-music');
+        bgMusic.volume = 0.5;
+        document.getElementById('audio-start-overlay').addEventListener('click', function() {
+            bgMusic.play().catch(e => console.log(e));
+            this.style.display = 'none';
+        });
+
+        const video = document.getElementById('webcam');
         const frameOverlay = document.getElementById('frame-overlay');
         
-        async function preloadFrames() {
-            const maxFrames = 10;
-            const validFrames = [];
+        // --- 📡 ระบบรับข้อมูล Real-time จาก Control Panel ---
+        // 1. รับค่าการเปิดปิด AR
+        onValue(ref(db, 'kiosk_settings/ar_enabled'), (snapshot) => {
+            isAREnabled = snapshot.exists() ? snapshot.val() : true;
+        });
+
+        // 2. รับ URL กรอบรูป 1-10 แบบ Real-time
+        onValue(ref(db, 'kiosk_settings/frames'), (snapshot) => {
+            const data = snapshot.val();
+            const newFrames = [];
+            if(data) {
+                for(let i=1; i<=10; i++) {
+                    if(data[`frame${i}`]) newFrames.push(data[`frame${i}`]);
+                }
+            }
             
-            // เช็คว่ามีไฟล์ frame1 ถึง frame10 อยู่จริงไหม
-            for (let i = 1; i <= maxFrames; i++) {
-                const imgName = `frame${i}.png`;
-                const exists = await new Promise((resolve) => {
-                    const img = new Image();
-                    img.onload = () => resolve(true);
-                    img.onerror = () => resolve(false);
-                    img.src = imgName;
-                });
-                
-                if (exists) validFrames.push(imgName);
-            }
-
-            if (validFrames.length > 0) {
-                frames = validFrames;
-                frameOverlay.src = frames[0];
-                console.log("กรอบรูปที่ใช้งานได้:", frames);
+            frames = newFrames;
+            
+            if (frames.length > 0) {
+                if (currentFrameIndex >= frames.length) currentFrameIndex = 0;
+                frameOverlay.src = frames[currentFrameIndex];
             } else {
-                console.error("ไม่พบไฟล์กรอบรูปเลย!");
-                frames = ['frame1.png']; // Fallback
+                frameOverlay.src = ""; // เคลียร์กรอบถ้าแอดมินลบรูปทิ้งหมด
             }
-        }
+        });
 
-        // --- ตัวแปร AI และ State ---
         const outputCanvas = document.getElementById('output_canvas');
         const canvasCtx = outputCanvas.getContext('2d');
         let drawingUtils;
         
         let gestureRecognizer;
+        let faceLandmarker; 
+        const propGlasses = document.getElementById('prop-glasses');
+        const propHat = document.getElementById('prop-hat');
+
         let isCountingDown = false;
         let lastVideoTime = -1;
         let handPositionState = "center"; 
         let gestureCooldown = 0;
         let isPredicting = false; 
 
-        // Auto Slide
         let autoSlideTimer;
         let userIdleTimer;
         const AUTO_SLIDE_INTERVAL = 6000; 
@@ -213,64 +160,89 @@
         function startAutoSlide() {
             clearInterval(autoSlideTimer);
             autoSlideTimer = setInterval(() => {
-                if (!isCountingDown && document.getElementById('result-screen').style.display !== 'flex') {
-                    changeFrame(1);
-                }
+                if (!isCountingDown && document.getElementById('result-screen').style.display !== 'flex') changeFrame(1);
             }, AUTO_SLIDE_INTERVAL);
         }
-
-        function stopAutoSlide() {
-            clearInterval(autoSlideTimer);
-        }
-
+        function stopAutoSlide() { clearInterval(autoSlideTimer); }
         function handleUserPresence() {
-            stopAutoSlide(); 
-            clearTimeout(userIdleTimer);
-            userIdleTimer = setTimeout(() => {
-                startAutoSlide();
-            }, IDLE_TIMEOUT);
+            stopAutoSlide(); clearTimeout(userIdleTimer);
+            userIdleTimer = setTimeout(startAutoSlide, IDLE_TIMEOUT);
         }
 
         async function initCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: { ideal: 1080 }, height: { ideal: 1920 }, facingMode: "user", frameRate: { ideal: 30, max: 60 } }
-                });
-                video.srcObject = stream;
-                
-                video.addEventListener('loadeddata', () => {
-                    outputCanvas.width = video.videoWidth;
-                    outputCanvas.height = video.videoHeight;
-                });
-
-            } catch (err) {
-                console.error("ไม่สามารถเปิดกล้องได้: ", err);
-            }
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 1080 }, height: { ideal: 1920 }, facingMode: "user", frameRate: { ideal: 30, max: 60 } }
+            });
+            video.srcObject = stream;
+            video.addEventListener('loadeddata', () => {
+                outputCanvas.width = video.videoWidth;
+                outputCanvas.height = video.videoHeight;
+            });
         }
 
-        async function createGestureRecognizer() {
-            const vision = await FilesetResolver.forVisionTasks(
-                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
-            );
+        async function createAIModels() {
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+            
             gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
-                    delegate: "GPU" 
-                },
-                runningMode: "VIDEO",
-                numHands: 1 
+                baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task", delegate: "GPU" },
+                runningMode: "VIDEO", numHands: 1 
+            });
+
+            faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`, delegate: "GPU" },
+                outputFaceBlendshapes: false,
+                runningMode: "VIDEO", numFaces: 5 
             });
             
             drawingUtils = new DrawingUtils(canvasCtx);
-            
-            document.getElementById('ai-status').innerText = "🟢 พร้อมใช้งานแล้ว";
+            document.getElementById('ai-status').innerText = "🟢 ระบบพร้อมใช้งาน";
             setTimeout(() => { document.getElementById('ai-status').style.display = 'none'; }, 2000);
             
             predictWebcam();
         }
 
+        function drawARProps(ctx, faceLandmarks, canvasW, canvasH, mode) {
+            const leftEye = faceLandmarks[33]; 
+            const rightEye = faceLandmarks[263];
+            
+            const x1 = leftEye.x * canvasW;
+            const y1 = leftEye.y * canvasH;
+            const x2 = rightEye.x * canvasW;
+            const y2 = rightEye.y * canvasH;
+
+            const centerX = (x1 + x2) / 2;
+            const centerY = (y1 + y2) / 2;
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+            const faceWidth = Math.hypot(x2 - x1, y2 - y1);
+            
+            ctx.save();
+            
+            if (mode === 1 || mode === 3) {
+                const glassesWidth = faceWidth * 2.2; 
+                const glassesHeight = glassesWidth * (propGlasses.height / propGlasses.width);
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(angle);
+                ctx.drawImage(propGlasses, -glassesWidth / 2, -glassesHeight / 2, glassesWidth, glassesHeight);
+                ctx.restore();
+            }
+            
+            if (mode === 2 || mode === 3) {
+                const hatWidth = faceWidth * 3.5;
+                const hatHeight = hatWidth * (propHat.height / propHat.width);
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(angle);
+                ctx.translate(0, -faceWidth * 1.5); 
+                ctx.drawImage(propHat, -hatWidth / 2, -hatHeight / 2, hatWidth, hatHeight); 
+                ctx.restore();
+            }
+            
+            ctx.restore();
+        }
+
         function predictWebcam() {
-            if (!gestureRecognizer) {
+            if (!gestureRecognizer || !faceLandmarker) {
                 requestAnimationFrame(predictWebcam);
                 return;
             }
@@ -279,30 +251,37 @@
                 lastVideoTime = video.currentTime;
                 
                 let startTimeMs = performance.now();
-                const results = gestureRecognizer.recognizeForVideo(video, startTimeMs);
+                
+                const gestureResults = gestureRecognizer.recognizeForVideo(video, startTimeMs);
+                const faceResults = faceLandmarker.detectForVideo(video, startTimeMs);
                 
                 canvasCtx.save();
                 canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
                 
                 if (document.getElementById('result-screen').style.display !== 'flex') {
-                    if (results.landmarks && results.landmarks.length > 0) {
-                        
+                    
+                    if ((gestureResults.landmarks && gestureResults.landmarks.length > 0) || 
+                        (faceResults.faceLandmarks && faceResults.faceLandmarks.length > 0)) {
                         handleUserPresence(); 
+                    }
 
-                        for (const landmarks of results.landmarks) {
-                            drawingUtils.drawConnectors(landmarks, GestureRecognizer.HAND_CONNECTIONS, {
-                                color: "#00E5FF", lineWidth: 6
-                            });
-                            drawingUtils.drawLandmarks(landmarks, {
-                                color: "#FF3D00", lineWidth: 4, radius: 5
-                            });
+                    if (gestureResults.landmarks) {
+                        for (const landmarks of gestureResults.landmarks) {
+                            drawingUtils.drawConnectors(landmarks, GestureRecognizer.HAND_CONNECTIONS, { color: "#00E5FF", lineWidth: 6 });
+                            drawingUtils.drawLandmarks(landmarks, { color: "#FF3D00", lineWidth: 4, radius: 5 });
+                        }
+                    }
+
+                    // 🚦 ตรวจสอบว่าแอดมินเปิด AR ไว้หรือไม่
+                    if (faceResults.faceLandmarks && isAREnabled) {
+                        for (const faceLandmarks of faceResults.faceLandmarks) {
+                            drawARProps(canvasCtx, faceLandmarks, outputCanvas.width, outputCanvas.height, currentPropMode);
                         }
                     }
                 }
                 canvasCtx.restore();
 
-                processGestures(results);
-                
+                processGestures(gestureResults);
                 isPredicting = false;
             }
             requestAnimationFrame(predictWebcam);
@@ -312,61 +291,39 @@
             const resultScreen = document.getElementById('result-screen');
             if (isCountingDown || resultScreen.style.display === 'flex') return;
 
-            if (results.landmarks.length > 0) {
-                const hand = results.landmarks[0];
-                const x = hand[0].x; 
-                
+            if (results.landmarks && results.landmarks.length > 0) {
+                const x = results.landmarks[0][0].x; 
                 if (Date.now() > gestureCooldown) {
-                    
-                    const LEFT_ZONE = 0.35;   
-                    const RIGHT_ZONE = 0.65;  
-                    const CENTER_MIN = 0.45;  
-                    const CENTER_MAX = 0.55;
-
-                    if (x < LEFT_ZONE) { 
-                        if (handPositionState === "right" || handPositionState === "center") {
-                            changeFrame(-1); 
-                            gestureCooldown = Date.now() + 1500; 
-                        }
+                    if (x < 0.35) { 
+                        if (handPositionState === "right" || handPositionState === "center") { changeFrame(-1); gestureCooldown = Date.now() + 1500; }
                         handPositionState = "left";
-                    } else if (x > RIGHT_ZONE) {
-                        if (handPositionState === "left" || handPositionState === "center") {
-                            changeFrame(1);
-                            gestureCooldown = Date.now() + 1500;
-                        }
+                    } else if (x > 0.65) {
+                        if (handPositionState === "left" || handPositionState === "center") { changeFrame(1); gestureCooldown = Date.now() + 1500; }
                         handPositionState = "right";
-                    } else if (x > CENTER_MIN && x < CENTER_MAX) {
-                        handPositionState = "center"; 
-                    }
+                    } else if (x > 0.45 && x < 0.55) { handPositionState = "center"; }
 
-                    if (results.gestures.length > 0) {
-                        const categoryName = results.gestures[0][0].categoryName;
-                        if (categoryName === "Victory") {
-                            startCaptureCountdown();
-                        }
+                    if (results.gestures.length > 0 && results.gestures[0][0].categoryName === "Victory") {
+                        startCaptureCountdown();
                     }
                 }
             }
         }
 
         function changeFrame(direction) {
-            if (frames.length === 0) return; // กันพังถ้าไม่มีเฟรม
-
+            if (frames.length === 0) return;
             currentFrameIndex += direction;
             if (currentFrameIndex < 0) currentFrameIndex = frames.length - 1;
             if (currentFrameIndex >= frames.length) currentFrameIndex = 0;
             
+            currentPropMode = Math.floor(Math.random() * 3) + 1;
+            
             frameOverlay.style.opacity = 0;
-            setTimeout(() => {
-                frameOverlay.src = frames[currentFrameIndex];
-                frameOverlay.style.opacity = 1;
-            }, 300); 
+            setTimeout(() => { frameOverlay.src = frames[currentFrameIndex]; frameOverlay.style.opacity = 1; }, 300); 
         }
 
         function startCaptureCountdown() {
             isCountingDown = true;
-            stopAutoSlide(); 
-            clearTimeout(userIdleTimer);
+            stopAutoSlide(); clearTimeout(userIdleTimer);
             
             let count = 5;
             const countdownOverlay = document.getElementById('capture-countdown');
@@ -375,13 +332,8 @@
 
             const timer = setInterval(() => {
                 count--;
-                if (count > 0) {
-                    countdownOverlay.innerText = count;
-                } else {
-                    clearInterval(timer);
-                    countdownOverlay.style.display = 'none';
-                    takePhoto(); 
-                }
+                if (count > 0) { countdownOverlay.innerText = count; } 
+                else { clearInterval(timer); countdownOverlay.style.display = 'none'; takePhoto(); }
             }, 1000);
         }
 
@@ -390,11 +342,9 @@
         const resultScreen = document.getElementById('result-screen');
         const finalImage = document.getElementById('final-image');
         const qrcodeContainer = document.getElementById('qrcode-container');
-        let resetInterval;
 
-        function takePhoto() {
+        async function takePhoto() {
             canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
-            
             document.body.style.backgroundColor = "#ffffff";
             setTimeout(() => { document.body.style.backgroundColor = "#121212"; }, 100);
 
@@ -402,68 +352,90 @@
             captureCtx.translate(captureCanvas.width, 0);
             captureCtx.scale(-1, 1);
             captureCtx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+            
+            // 🚦 ตรวจสอบว่าแอดมินเปิด AR ไว้หรือไม่ตอนวาดรูปลงไฟล์
+            const faceResults = faceLandmarker.detectForVideo(video, performance.now());
+            if (faceResults.faceLandmarks && isAREnabled) {
+                for (const faceLandmarks of faceResults.faceLandmarks) {
+                    drawARProps(captureCtx, faceLandmarks, captureCanvas.width, captureCanvas.height, currentPropMode); 
+                }
+            }
+
             captureCtx.restore();
 
             const currentFrameImg = new Image();
-            currentFrameImg.src = frames[currentFrameIndex];
+            // ต้องเพิ่ม crossOrigin เพื่อให้อนุญาตวาดภาพจาก Cloudinary ลง Canvas ได้
+            currentFrameImg.crossOrigin = "anonymous"; 
             
-            currentFrameImg.onload = () => {
-                captureCtx.drawImage(currentFrameImg, 0, 0, captureCanvas.width, captureCanvas.height);
-                
-                finalImage.src = captureCanvas.toDataURL('image/png');
-                resultScreen.style.display = 'flex';
-                qrcodeContainer.innerHTML = '<h3 style="color: black; margin: 0;">กำลังอัปโหลด...</h3>';
-                
-                captureCanvas.toBlob(async (blob) => {
-                    try {
-                        const fileName = `photos/booth_${Date.now()}.png`;
-                        const storageRef = ref(storage, fileName);
+            if (frames.length > 0) {
+                currentFrameImg.src = frames[currentFrameIndex];
+                currentFrameImg.onload = () => processUploadAndQR(currentFrameImg);
+            } else {
+                processUploadAndQR(null); 
+            }
+        }
 
-                        await uploadBytes(storageRef, blob);
-                        const downloadURL = await getDownloadURL(storageRef);
-                        
-                        qrcodeContainer.innerHTML = ''; 
-                        new QRCode(qrcodeContainer, {
-                            text: downloadURL,
-                            width: 300, height: 300,
-                            colorDark : "#000000", colorLight : "#ffffff",
-                            correctLevel : QRCode.CorrectLevel.H
-                        });
+        // --- ☁️ อัปโหลดรูปขึ้น Cloudinary ---
+        function processUploadAndQR(frameImage) {
+            if (frameImage) {
+                captureCtx.drawImage(frameImage, 0, 0, captureCanvas.width, captureCanvas.height);
+            }
+            
+            finalImage.src = captureCanvas.toDataURL('image/png');
+            resultScreen.style.display = 'flex';
+            qrcodeContainer.innerHTML = '<h3 style="color: black; margin: 0;">กำลังอัปโหลด...</h3>';
+            
+            captureCanvas.toBlob(async (blob) => {
+                try {
+                    const formData = new FormData();
+                    formData.append('file', blob);
+                    formData.append('upload_preset', UPLOAD_PRESET);
 
-                        startResetTimer(15);
-                    } catch (error) {
-                        console.error("อัปโหลดไม่สำเร็จ:", error);
-                        qrcodeContainer.innerHTML = '<h3 style="color: red;">เกิดข้อผิดพลาด</h3>';
-                        startResetTimer(5);
-                    }
-                }, 'image/png');
-            };
+                    const res = await fetch(CLOUDINARY_URL, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await res.json();
+                    const downloadURL = data.secure_url;
+                    
+                    qrcodeContainer.innerHTML = ''; 
+                    new QRCode(qrcodeContainer, { 
+                        text: downloadURL, 
+                        width: 300, 
+                        height: 300, 
+                        colorDark : "#000000", 
+                        colorLight : "#ffffff", 
+                        correctLevel : QRCode.CorrectLevel.H 
+                    });
+
+                    startResetTimer(15);
+                } catch (error) {
+                    console.error(error);
+                    qrcodeContainer.innerHTML = '<h3 style="color: red;">เกิดข้อผิดพลาดในการอัปโหลด</h3>';
+                    startResetTimer(5);
+                }
+            }, 'image/png');
         }
 
         function startResetTimer(seconds) {
             let timeLeft = seconds;
             document.getElementById('countdown-text').innerText = timeLeft;
-            
-            resetInterval = setInterval(() => {
+            let resetInterval = setInterval(() => {
                 timeLeft--;
                 document.getElementById('countdown-text').innerText = timeLeft;
                 if (timeLeft <= 0) {
                     clearInterval(resetInterval);
                     resultScreen.style.display = 'none'; 
                     qrcodeContainer.innerHTML = '';
-                    
-                    isCountingDown = false;
+                    isCountingDown = false; 
                     handleUserPresence(); 
                 }
             }, 1000);
         }
 
-        // โหลดข้อมูลให้พร้อมก่อนเปิดกล้องและเริ่ม AI
-        preloadFrames().then(() => {
-            initCamera().then(() => {
-                createGestureRecognizer();
-                startAutoSlide(); 
-            });
+        initCamera().then(() => {
+            createAIModels(); 
+            startAutoSlide(); 
         });
 
     </script>
