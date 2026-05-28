@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiosk Control Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Chakra Petch', sans-serif; background-color: #121212; color: white; margin: 0; padding: 20px; }
+        h1 { text-align: center; color: #00E5FF; margin-bottom: 30px; }
+        
+        /* สวิตช์ เปิด-ปิด AR */
+        .ar-control { background: #222; padding: 20px; border-radius: 15px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border: 2px solid #333; }
+        .ar-control h2 { margin: 0; font-size: 24px; }
+        .switch { position: relative; display: inline-block; width: 60px; height: 34px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 26px; width: 26px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #00E5FF; }
+        input:checked + .slider:before { transform: translateX(26px); }
+
+        /* กริดจัดระเบียบ Frame 1-10 */
+        .frames-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+        .frame-card { background: #222; border-radius: 15px; padding: 15px; text-align: center; border: 2px solid #333; }
+        .frame-card h3 { margin-top: 0; color: #aaaaaa; }
+        .preview-img { width: 100%; height: 200px; object-fit: contain; background: #000; border-radius: 10px; margin-bottom: 15px; }
+        
+        /* ปุ่มควบคุม */
+        input[type="file"] { display: none; }
+        .btn { padding: 10px 15px; border: none; border-radius: 8px; font-family: 'Chakra Petch', sans-serif; font-size: 16px; font-weight: bold; cursor: pointer; width: 100%; margin-bottom: 10px; transition: 0.2s; }
+        .btn-upload { background-color: #00E5FF; color: #000; }
+        .btn-delete { background-color: #FF3D00; color: white; }
+        .btn:disabled { background-color: #555; cursor: not-allowed; color: #888; }
+    </style>
+</head>
+<body>
+
+    <h1>🎛️ KIOSK CONTROL</h1>
+
+    <div class="ar-control">
+        <h2>โหมด AR (แว่นตา/หมวก)</h2>
+        <label class="switch">
+            <input type="checkbox" id="ar-toggle">
+            <span class="slider"></span>
+        </label>
+    </div>
+
+    <h2 style="text-align: center; color: #00E5FF;">จัดการกรอบรูป (Frame 1 - 10)</h2>
+    <div class="frames-grid" id="frames-container">
+        </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
+        import { getDatabase, ref, set, onValue, remove } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
+
+        // ตั้งค่า Firebase Database
+        const firebaseConfig = {
+            apiKey: "AIzaSyDMptdLpLEdbeVFKZj82M0gyoV2m_2y5Pk",
+            authDomain: "suchartstudio-9a78d.firebaseapp.com",
+            databaseURL: "https://suchartstudio-9a78d-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "suchartstudio-9a78d"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // ตั้งค่า Cloudinary
+        const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dk0ypev4m/image/upload";
+        const UPLOAD_PRESET = "khonkaen_preset";
+
+        // --- 1. ควบคุมสวิตช์ AR ---
+        const arToggle = document.getElementById('ar-toggle');
+        
+        // ดึงค่าปัจจุบันจาก Firebase มาแสดง
+        onValue(ref(db, 'kiosk_settings/ar_enabled'), (snapshot) => {
+            const isEnabled = snapshot.exists() ? snapshot.val() : true; // Default เป็นเปิด
+            arToggle.checked = isEnabled;
+        });
+
+        // เมื่อกดสวิตช์ ให้อัปเดตขึ้น Firebase
+        arToggle.addEventListener('change', (e) => {
+            set(ref(db, 'kiosk_settings/ar_enabled'), e.target.checked);
+        });
+
+
+        // --- 2. สร้างการ์ดและระบบอัปโหลด Frame 1 - 10 ---
+        const framesContainer = document.getElementById('frames-container');
+        
+        for (let i = 1; i <= 10; i++) {
+            const card = document.createElement('div');
+            card.className = 'frame-card';
+            card.innerHTML = `
+                <h3>Frame ${i}</h3>
+                <img id="preview-${i}" class="preview-img" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="No Frame">
+                <label for="file-${i}" class="btn btn-upload" id="label-${i}" style="display: block; box-sizing: border-box; text-align: center;">อัปโหลดไฟล์ใหม่</label>
+                <input type="file" id="file-${i}" accept="image/png">
+                <button class="btn btn-delete" id="del-${i}">ลบทิ้ง</button>
+            `;
+            framesContainer.appendChild(card);
+
+            // ฟังคำสั่งเมื่อเลือกไฟล์
+            document.getElementById(`file-${i}`).addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const label = document.getElementById(`label-${i}`);
+                label.innerText = "⏳ กำลังอัปโหลด...";
+                label.style.pointerEvents = "none";
+
+                try {
+                    // ส่งภาพเข้า Cloudinary
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('upload_preset', UPLOAD_PRESET);
+
+                    const res = await fetch(CLOUDINARY_URL, { method: 'POST', body: formData });
+                    const data = await res.json();
+                    
+                    if(data.secure_url) {
+                        // เอา URL ที่ได้ บันทึกลง Firebase Database
+                        await set(ref(db, `kiosk_settings/frames/frame${i}`), data.secure_url);
+                        alert(`อัปโหลด Frame ${i} สำเร็จ!`);
+                    }
+                } catch (error) {
+                    alert("เกิดข้อผิดพลาดในการอัปโหลด");
+                    console.error(error);
+                } finally {
+                    label.innerText = "อัปโหลดไฟล์ใหม่";
+                    label.style.pointerEvents = "auto";
+                    e.target.value = ""; // เคลียร์ช่อง
+                }
+            });
+
+            // ลบเฟรม
+            document.getElementById(`del-${i}`).addEventListener('click', async () => {
+                if(confirm(`ยืนยันการลบ Frame ${i} ออกจากระบบ?`)) {
+                    await remove(ref(db, `kiosk_settings/frames/frame${i}`));
+                }
+            });
+        }
+
+        // --- 3. ดึงภาพ Frame ที่มีอยู่แล้วมาแสดงผลแบบ Real-time ---
+        onValue(ref(db, 'kiosk_settings/frames'), (snapshot) => {
+            const data = snapshot.val() || {};
+            for (let i = 1; i <= 10; i++) {
+                const img = document.getElementById(`preview-${i}`);
+                if (data[`frame${i}`]) {
+                    img.src = data[`frame${i}`];
+                } else {
+                    // ถ้าไม่มีรูป ให้เป็นสีดำโล่งๆ
+                    img.src = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+                }
+            }
+        });
+    </script>
+</body>
+</html>
